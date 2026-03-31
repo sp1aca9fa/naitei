@@ -6,6 +6,7 @@ import healthRouter from './routes/health'
 import profileRouter from './routes/profile'
 
 const app = express()
+app.set('trust proxy', 1)
 const PORT = process.env.PORT || 3001
 
 const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')
