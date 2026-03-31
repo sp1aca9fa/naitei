@@ -8,10 +8,21 @@ import profileRouter from './routes/profile'
 const app = express()
 const PORT = process.env.PORT || 3001
 
-app.use(cors({
-  origin: (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, ''),
+const allowedOrigin = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '')
+
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (curl, Postman, server-to-server)
+    if (!origin) return callback(null, true)
+    if (origin === allowedOrigin) return callback(null, true)
+    console.error(`CORS blocked: origin="${origin}" allowedOrigin="${allowedOrigin}"`)
+    callback(new Error(`CORS: origin not allowed`))
+  },
   credentials: true,
-}))
+}
+
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions))
 
 app.use(express.json())
 app.use(apiLimiter)
