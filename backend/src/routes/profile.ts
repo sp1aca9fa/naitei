@@ -7,6 +7,7 @@ import { aiLimiter } from '../middleware/rateLimiter'
 import { getAIProvider } from '../services/ai/provider'
 import { ParsedResumeSchema } from '../services/ai/schemas'
 import { PARSE_RESUME_SYSTEM, parseResumePrompt } from '../prompts/parse-resume'
+import { parseAIJson } from '../services/ai/parseJson'
 import { supabase } from '../lib/supabase'
 
 const router = Router()
@@ -80,7 +81,7 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
 
   let aiJson: unknown
   try {
-    aiJson = JSON.parse(aiRaw)
+    aiJson = parseAIJson(aiRaw)
   } catch {
     return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 200) })
   }
