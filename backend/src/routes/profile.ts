@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfParse = require('pdf-parse') as (buffer: Buffer) => Promise<{ text: string }>
+import { extractText } from 'unpdf'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
 import { aiLimiter } from '../middleware/rateLimiter'
@@ -62,8 +61,8 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
 
   let resumeText: string
   try {
-    const parsed = await pdfParse(req.file.buffer)
-    resumeText = parsed.text.trim()
+    const { text } = await extractText(new Uint8Array(req.file.buffer), { mergePages: true })
+    resumeText = text.trim()
   } catch {
     return res.status(422).json({ error: 'Could not extract text from PDF' })
   }
