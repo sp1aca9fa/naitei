@@ -3,6 +3,7 @@ import express from 'express'
 import cors from 'cors'
 import { apiLimiter } from './middleware/rateLimiter'
 import healthRouter from './routes/health'
+import profileRouter from './routes/profile'
 
 const app = express()
 const PORT = process.env.PORT || 3001
@@ -16,6 +17,7 @@ app.use(express.json())
 app.use(apiLimiter)
 
 app.use('/health', healthRouter)
+app.use('/profile', profileRouter)
 
 // 404 handler
 app.use((_req, res) => {
