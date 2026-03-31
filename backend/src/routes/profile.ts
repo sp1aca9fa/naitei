@@ -1,6 +1,5 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
-import { extractText } from 'unpdf'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
 import { aiLimiter } from '../middleware/rateLimiter'
@@ -62,10 +61,17 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
 
   let resumeText: string
   try {
-    const { text } = await extractText(new Uint8Array(req.file.buffer), { mergePages: true })
-    resumeText = text.trim()
-  } catch {
-    return res.status(422).json({ error: 'Could not extract text from PDF' })
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const PDFParser = require('pdf2json')
+    const pdfParser = new PDFParser(null, 1)
+    resumeText = await new Promise<string>((resolve, reject) => {
+      pdfParser.on('pdfParser_dataReady', () => resolve(pdfParser.getRawTextContent() as string))
+      pdfParser.on('pdfParser_dataError', (err: { parserError: Error }) => reject(err.parserError))
+      pdfParser.parseBuffer(req.file!.buffer)
+    }).then(t => t.trim())
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    return res.status(422).json({ error: 'Could not extract text from PDF', detail: msg })
   }
 
   if (!resumeText) return res.status(422).json({ error: 'PDF appears to be empty or image-only' })

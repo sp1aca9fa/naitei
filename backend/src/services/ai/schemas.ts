@@ -5,7 +5,7 @@ export const ParsedResumeSchema = z.object({
   skills: z.array(z.string()),
   experience_years: z.number().int(),
   experience_summary: z.string(),
-  education: z.string(),
+  education: z.union([z.string(), z.array(z.string()).transform(a => a.join(', '))]),
   notable_projects: z.array(z.string()),
   languages_spoken: z.array(z.string()),
 })

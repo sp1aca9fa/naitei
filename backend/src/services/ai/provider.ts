@@ -47,7 +47,11 @@ class GeminiProvider implements AIProvider {
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
     const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' })
     const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
-    return result.response.text()
+    const candidate = result.response.candidates?.[0]
+    if (!candidate) throw new Error(`Gemini returned no candidates. Prompt feedback: ${JSON.stringify(result.response.promptFeedback)}`)
+    const text = candidate.content.parts.map(p => p.text ?? '').join('')
+    if (!text) throw new Error(`Gemini response empty. Finish reason: ${candidate.finishReason}`)
+    return text
   }
 }
 
