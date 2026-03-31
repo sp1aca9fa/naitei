@@ -45,7 +45,7 @@ class GeminiProvider implements AIProvider {
   private client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
 
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
-    const model = this.client.getGenerativeModel({ model: 'gemini-1.5-flash' })
+    const model = this.client.getGenerativeModel({ model: 'gemini-2.0-flash' })
     const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
     return result.response.text()
   }
