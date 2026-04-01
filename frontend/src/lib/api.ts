@@ -79,13 +79,31 @@ export async function importUrlJob(url: string) {
   return res.json() as Promise<{ description?: string; title?: string; company?: string; fallback?: boolean; reason?: string }>
 }
 
-export async function importPasteJob(body: { description: string; title?: string; company?: string }) {
+export async function updateJob(id: string, body: { url?: string }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/${id}`, {
+    method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function importPasteJob(body: { description: string; title?: string; company?: string; url?: string }) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/paste`, {
     method: 'POST',
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function importRemotive(): Promise<{ imported: number; skipped: number; failed?: number; total: number }> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/import/remotive`, { method: 'POST', headers })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }

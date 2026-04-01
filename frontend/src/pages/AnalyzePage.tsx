@@ -56,6 +56,7 @@ export function AnalyzePage() {
         description: description.trim(),
         title: title.trim() || undefined,
         company: company.trim() || undefined,
+        url: url.trim() || undefined,
       })
       if (data.skipped) {
         setSkipped(data.error ?? 'Job matched a blocklist word and was skipped.')

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getJobs, deleteJob } from '../lib/api'
+import { getJobs, deleteJob, importRemotive } from '../lib/api'
 
 interface JobSummary {
   id: string
@@ -43,6 +43,8 @@ export function MyJobsPage() {
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [importing, setImporting] = useState(false)
+  const [importResult, setImportResult] = useState<string | null>(null)
 
   useEffect(() => {
     getJobs()
@@ -50,6 +52,23 @@ export function MyJobsPage() {
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load jobs'))
       .finally(() => setLoading(false))
   }, [])
+
+  async function handleImportRemotive() {
+    setImporting(true)
+    setImportResult(null)
+    try {
+      const result = await importRemotive()
+      setImportResult(`Imported ${result.imported} new job${result.imported !== 1 ? 's' : ''}${result.failed ? `, ${result.failed} failed` : ''} (${result.skipped} already in your list)`)
+      if (result.imported > 0) {
+        const updated = await getJobs()
+        setJobs(updated)
+      }
+    } catch (err) {
+      setImportResult(err instanceof Error ? err.message : 'Import failed')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   async function handleDelete(id: string) {
     setDeleting(id)
@@ -71,13 +90,26 @@ export function MyJobsPage() {
           <h2 className="text-2xl font-bold text-gray-900 mb-1">My Jobs</h2>
           <p className="text-sm text-gray-400">{jobs.length} analyzed job{jobs.length !== 1 ? 's' : ''}</p>
         </div>
-        <Link
-          to="/jobs/analyze"
-          className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
-        >
-          + Analyze Job
-        </Link>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleImportRemotive}
+            disabled={importing}
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importing ? 'Importing...' : 'Import from Remotive'}
+          </button>
+          <Link
+            to="/jobs/analyze"
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
+          >
+            + Analyze Job
+          </Link>
+        </div>
       </div>
+
+      {importResult && (
+        <p className="text-sm text-gray-600 bg-gray-50 border border-gray-200 rounded px-3 py-2">{importResult}</p>
+      )}
 
       {loading && <p className="text-sm text-gray-400">Loading...</p>}
       {error && <p className="text-sm text-red-500">{error}</p>}

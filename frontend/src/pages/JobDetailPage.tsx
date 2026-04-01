@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getJob, saveApplication, rescoreJob } from '../lib/api'
+import { getJob, saveApplication, rescoreJob, updateJob } from '../lib/api'
 import { CompanyResearchCard } from '../components/CompanyResearchCard'
 
 interface AtsDetails {
@@ -32,6 +32,8 @@ interface Job {
   application_effort: string | null
   ats_score: number | null
   ats_details: AtsDetails | null
+  url: string | null
+  description_raw: string | null
   created_at: string
 }
 
@@ -52,6 +54,9 @@ export function JobDetailPage() {
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [rescoring, setRescoring] = useState(false)
+  const [addingUrl, setAddingUrl] = useState(false)
+  const [urlInput, setUrlInput] = useState('')
+  const [savingUrl, setSavingUrl] = useState(false)
 
   useEffect(() => {
     if (!id) return
@@ -72,6 +77,21 @@ export function JobDetailPage() {
       setError(err instanceof Error ? err.message : 'Rescore failed')
     } finally {
       setRescoring(false)
+    }
+  }
+
+  async function handleSaveUrl() {
+    if (!job || !urlInput.trim()) return
+    setSavingUrl(true)
+    try {
+      const updated = await updateJob(job.id, { url: urlInput.trim() })
+      setJob(updated)
+      setAddingUrl(false)
+      setUrlInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save URL')
+    } finally {
+      setSavingUrl(false)
     }
   }
 
@@ -104,6 +124,50 @@ export function JobDetailPage() {
           </Link>
           <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
           {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
+          {job.url ? (
+            <div className="flex items-center gap-3 mt-1">
+              <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+                View original posting &rarr;
+              </a>
+              {job.description_raw && (
+                <a href="#job-description" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+                  View saved description
+                </a>
+              )}
+            </div>
+          ) : addingUrl ? (
+            <div className="flex items-center gap-2 mt-1">
+              <input
+                type="url"
+                value={urlInput}
+                onChange={e => setUrlInput(e.target.value)}
+                placeholder="https://..."
+                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
+                autoFocus
+              />
+              <button
+                onClick={handleSaveUrl}
+                disabled={savingUrl || !urlInput.trim()}
+                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+              >
+                {savingUrl ? '...' : 'Save'}
+              </button>
+              <button onClick={() => setAddingUrl(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                Cancel
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3 mt-1">
+              {job.description_raw && (
+                <a href="#job-description" className="text-xs text-blue-600 hover:underline">
+                  View job description &rarr;
+                </a>
+              )}
+              <button onClick={() => setAddingUrl(true)} className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+                + Add URL
+              </button>
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <button
@@ -252,6 +316,13 @@ export function JobDetailPage() {
             </div>
           )}
         </>
+      )}
+
+      {job.description_raw && (
+        <div id="job-description" className="bg-white border border-gray-200 rounded-lg p-6">
+          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Job Description</h4>
+          <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{job.description_raw}</pre>
+        </div>
       )}
 
       {job.company && <CompanyResearchCard companyName={job.company} />}
