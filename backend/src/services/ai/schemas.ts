@@ -47,3 +47,17 @@ export const JobScoreSchema = z.object({
 })
 
 export type JobScore = z.infer<typeof JobScoreSchema>
+
+export const CompanyResearchSchema = z.object({
+  company_name: z.string(),
+  overview: z.string(),
+  known_for: z.string(),
+  tech_stack: z.array(z.string()),
+  culture_signals: z.array(z.string()),
+  green_flags: z.array(z.string()),
+  red_flags: z.array(z.string()),
+  interview_tips: z.array(z.string()),
+  typical_roles: z.array(z.string()),
+})
+
+export type CompanyResearch = z.infer<typeof CompanyResearchSchema>

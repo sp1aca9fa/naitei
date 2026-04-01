@@ -92,6 +92,31 @@ class OllamaProvider implements AIProvider {
   }
 }
 
+export const MOCK_COMPANY_RESEARCH: Record<string, object> = {
+  'Mercari': {
+    company_name: 'Mercari',
+    overview: 'Mercari is Japan\'s largest C2C marketplace app, founded in 2013 and publicly listed on the Tokyo Stock Exchange. It operates in Japan and the US with thousands of employees.',
+    known_for: 'Known for being one of Japan\'s first unicorn startups and for building a highly scalable microservices platform.',
+    tech_stack: ['Go', 'TypeScript', 'React', 'Kubernetes', 'GCP', 'Spanner', 'gRPC', 'microservices'],
+    culture_signals: ['English-friendly (official company language is English)', 'Strong engineering culture', 'Flexible remote work', 'Fast-paced startup mindset despite scale', 'Open source contributors'],
+    green_flags: ['Large engineering org with mentorship opportunities', 'English as official language lowers language barrier', 'Strong technical reputation helps your resume', 'Internal mobility between teams'],
+    red_flags: ['High performance bar -- competitive hiring', 'Microservices complexity may overwhelm juniors', 'Large company can mean slower onboarding'],
+    interview_tips: ['Brush up on system design basics even for junior roles', 'Be ready to discuss your approach to code quality and testing', 'English interviews are standard -- practice technical English', 'They value culture-add, so prepare "why Mercari" clearly'],
+    typical_roles: ['Frontend Engineer', 'Backend Engineer (Go)', 'iOS/Android Engineer', 'SRE', 'Data Engineer'],
+  },
+  'SmartNews': {
+    company_name: 'SmartNews',
+    overview: 'SmartNews is a Tokyo-based news aggregation app with over 50 million downloads globally. It uses ML to surface relevant news to users in Japan and the US.',
+    known_for: 'Known for its ML-driven content ranking and being one of Japan\'s few truly bilingual tech companies.',
+    tech_stack: ['Python', 'Java', 'Kotlin', 'Swift', 'AWS', 'Spark', 'Kafka', 'machine learning pipelines'],
+    culture_signals: ['Bilingual environment (Japanese and English)', 'Data-driven decision making', 'Research-oriented engineering teams', 'Relatively flat hierarchy'],
+    green_flags: ['Exposure to ML/data engineering early in career', 'Strong international team composition', 'Clear product mission'],
+    red_flags: ['ML-heavy stack may not suit pure frontend devs', 'Smaller engineering team means less specialization', 'US/Japan timezone coordination can be demanding'],
+    interview_tips: ['Show interest in data and personalization problems', 'Be ready for both technical and product-sense questions', 'Prepare examples of working with or processing data'],
+    typical_roles: ['Backend Engineer', 'ML Engineer', 'iOS/Android Engineer', 'Data Scientist'],
+  },
+}
+
 const MOCK_RESUMES: Record<string, object> = {
   'Maria Santos': {
     name: 'Maria Santos',
@@ -125,6 +150,18 @@ class MockProvider implements AIProvider {
   name = 'mock'
 
   async complete(_systemPrompt: string, userPrompt: string): Promise<string> {
+    // Company research mock
+    if (userPrompt.includes('Research the company')) {
+      const match = Object.keys(MOCK_COMPANY_RESEARCH).find(name => userPrompt.includes(name))
+      const data = match ? MOCK_COMPANY_RESEARCH[match] : {
+        ...MOCK_COMPANY_RESEARCH['Mercari'],
+        company_name: 'Unknown Company',
+        overview: 'Limited information available for this company. The details below are generic placeholders.',
+      }
+      console.log(`[MockProvider] returning mock company research for: ${(data as { company_name: string }).company_name}`)
+      return JSON.stringify(data)
+    }
+    // Resume parse mock
     const match = Object.keys(MOCK_RESUMES).find(name => userPrompt.includes(name))
     const data = match ? MOCK_RESUMES[match] : MOCK_RESUMES['Kenji Watanabe']
     console.log(`[MockProvider] returning mock JSON for: ${(data as { name: string }).name}`)

@@ -60,3 +60,21 @@ export async function deleteResumeVersion(versionId: string) {
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+export async function searchCompanies(q: string): Promise<{ id: string; name: string; research: unknown }[]> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/company/search?q=${encodeURIComponent(q)}`, { headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function researchCompany(companyName: string, jobTitle?: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/company/research`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ company_name: companyName, job_title: jobTitle }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}

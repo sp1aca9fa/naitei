@@ -4,6 +4,7 @@ import cors from 'cors'
 import { apiLimiter } from './middleware/rateLimiter'
 import healthRouter from './routes/health'
 import profileRouter from './routes/profile'
+import companyRouter from './routes/company'
 
 const app = express()
 app.set('trust proxy', 1)
@@ -30,6 +31,7 @@ app.use(apiLimiter)
 
 app.use('/health', healthRouter)
 app.use('/profile', profileRouter)
+app.use('/company', companyRouter)
 
 // 404 handler
 app.use((_req, res) => {
