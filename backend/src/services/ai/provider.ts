@@ -146,10 +146,52 @@ const MOCK_RESUMES: Record<string, object> = {
   },
 }
 
+const MOCK_JOB_SCORE = {
+  score: {
+    total: 72,
+    breakdown: {
+      skills_match: 75,
+      language_environment: 80,
+      company_quality: 70,
+      location_commute: 65,
+      growth_opportunity: 70,
+    },
+    summary: 'Strong frontend skills match. The role aligns well with your React and TypeScript background. Some gaps in backend/DevOps areas but overall a solid fit for a junior position.',
+    green_flags: ['React and TypeScript required — direct match', 'English-friendly environment', 'Junior-level role with clear growth path'],
+    red_flags: ['Requires Docker/CI experience you may lack', 'Competitive applicant pool in Tokyo'],
+    matched_skills: ['React', 'TypeScript', 'JavaScript', 'CSS', 'Git'],
+    missing_skills: ['Docker', 'GraphQL', 'CI/CD'],
+    salary_assessment: 'Competitive for Tokyo junior level (~350-450k JPY/month)',
+    application_effort: 'medium' as const,
+    tech_debt_signal: false,
+    language_env_detected: 'english' as const,
+    recommendation: 'apply_with_tailoring' as const,
+    recommendation_reason: 'Good skills match — tailor resume to highlight any DevOps or backend experience.',
+  },
+  ats: {
+    ats_score: 68,
+    keyword_matches: ['React', 'TypeScript', 'JavaScript', 'Git'],
+    missing_keywords: ['Docker', 'CI/CD', 'GraphQL', 'REST API'],
+    formatting_issues: ['Add a dedicated Skills section for better ATS parsing'],
+    section_header_issues: [],
+    action_verb_score: 7,
+    improvements: [
+      'Add Docker to skills if you have any experience',
+      'Include GitHub Actions or other CI/CD tools',
+      'Use "Developed", "Built", "Implemented" as action verbs',
+    ],
+  },
+}
+
 class MockProvider implements AIProvider {
   name = 'mock'
 
   async complete(_systemPrompt: string, userPrompt: string): Promise<string> {
+    // Job scoring mock
+    if (userPrompt.startsWith('USER PROFILE:')) {
+      console.log('[MockProvider] returning mock job score')
+      return JSON.stringify(MOCK_JOB_SCORE)
+    }
     // Company research mock
     if (userPrompt.includes('Research the company')) {
       const match = Object.keys(MOCK_COMPANY_RESEARCH).find(name => userPrompt.includes(name))

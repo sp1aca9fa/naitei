@@ -19,8 +19,8 @@ interface Suggestion {
   research: CompanyResearch
 }
 
-export function CompanyResearchCard() {
-  const [query, setQuery] = useState('')
+export function CompanyResearchCard({ companyName: initialCompany }: { companyName?: string } = {}) {
+  const [query, setQuery] = useState(initialCompany ?? '')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [result, setResult] = useState<CompanyResearch | null>(null)
@@ -31,6 +31,22 @@ export function CompanyResearchCard() {
   const containerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const justSelectedRef = useRef(false)
+
+  // Auto-research when company name is provided as prop
+  useEffect(() => {
+    if (!initialCompany) return
+    setSearchedName(initialCompany)
+    setGenerating(true)
+    researchCompany(initialCompany)
+      .then(data => setResult(data))
+      .catch(err => {
+        const msg = err instanceof Error ? err.message : 'Research failed'
+        if (msg.includes('not_found')) setNotFound(true)
+        else setError(msg)
+      })
+      .finally(() => setGenerating(false))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Debounced search for dropdown
   useEffect(() => {
@@ -104,9 +120,11 @@ export function CompanyResearchCard() {
 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">Company Research</h2>
+      <h2 className="text-lg font-semibold text-gray-900 mb-4">
+        Company Research
+      </h2>
 
-      <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
+      {!initialCompany && <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1" ref={containerRef}>
           <input
             type="text"
@@ -144,8 +162,9 @@ export function CompanyResearchCard() {
         >
           {generating ? 'Generating...' : 'Research'}
         </button>
-      </form>
+      </form>}
 
+      {generating && <p className="text-sm text-gray-400 mb-4">Loading...</p>}
       {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
 
       {notFound && (

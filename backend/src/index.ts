@@ -5,6 +5,8 @@ import { apiLimiter } from './middleware/rateLimiter'
 import healthRouter from './routes/health'
 import profileRouter from './routes/profile'
 import companyRouter from './routes/company'
+import jobsRouter from './routes/jobs'
+import applicationsRouter from './routes/applications'
 
 const app = express()
 app.set('trust proxy', 1)
@@ -32,6 +34,8 @@ app.use(apiLimiter)
 app.use('/health', healthRouter)
 app.use('/profile', profileRouter)
 app.use('/company', companyRouter)
+app.use('/jobs', jobsRouter)
+app.use('/applications', applicationsRouter)
 
 // 404 handler
 app.use((_req, res) => {

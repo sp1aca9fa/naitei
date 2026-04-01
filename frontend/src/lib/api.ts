@@ -68,6 +68,67 @@ export async function searchCompanies(q: string): Promise<{ id: string; name: st
   return res.json()
 }
 
+export async function importUrlJob(url: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/import/url`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json() as Promise<{ description?: string; title?: string; company?: string; fallback?: boolean; reason?: string }>
+}
+
+export async function importPasteJob(body: { description: string; title?: string; company?: string }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/import/paste`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getJobs() {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs`, { headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteJob(id: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/${id}`, { method: 'DELETE', headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function getJob(id: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/${id}`, { headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function rescoreJob(id: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/${id}/rescore`, { method: 'POST', headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function saveApplication(jobId: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ job_id: jobId }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
 export async function researchCompany(companyName: string, jobTitle?: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/company/research`, {

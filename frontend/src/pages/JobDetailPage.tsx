@@ -1,0 +1,260 @@
+import { useState, useEffect } from 'react'
+import { useParams, Link } from 'react-router-dom'
+import { getJob, saveApplication, rescoreJob } from '../lib/api'
+import { CompanyResearchCard } from '../components/CompanyResearchCard'
+
+interface AtsDetails {
+  ats_score: number
+  keyword_matches: string[]
+  missing_keywords: string[]
+  formatting_issues: string[]
+  section_header_issues: string[]
+  action_verb_score: number
+  improvements: string[]
+}
+
+interface Job {
+  id: string
+  title: string
+  company: string | null
+  source: string
+  scoring_status: string | null
+  ai_score: number | null
+  ai_score_breakdown: Record<string, number> | null
+  ai_summary: string | null
+  ai_green_flags: string[] | null
+  ai_red_flags: string[] | null
+  ai_recommendation: string | null
+  ai_recommendation_reason: string | null
+  matched_skills: string[] | null
+  missing_skills: string[] | null
+  salary_assessment: string | null
+  application_effort: string | null
+  ats_score: number | null
+  ats_details: AtsDetails | null
+  created_at: string
+}
+
+const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = {
+  apply_now: { label: 'Apply Now', color: 'text-green-700 bg-green-50 border-green-200' },
+  apply_with_tailoring: { label: 'Apply — Tailor Resume', color: 'text-blue-700 bg-blue-50 border-blue-200' },
+  save_for_later: { label: 'Save for Later', color: 'text-yellow-700 bg-yellow-50 border-yellow-200' },
+  skip: { label: 'Skip', color: 'text-red-700 bg-red-50 border-red-200' },
+}
+
+const EFFORT_LABELS: Record<string, string> = { low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
+
+export function JobDetailPage() {
+  const { id } = useParams<{ id: string }>()
+  const [job, setJob] = useState<Job | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
+  const [rescoring, setRescoring] = useState(false)
+
+  useEffect(() => {
+    if (!id) return
+    getJob(id)
+      .then(setJob)
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load job'))
+      .finally(() => setLoading(false))
+  }, [id])
+
+  async function handleRescore() {
+    if (!job) return
+    setRescoring(true)
+    setError(null)
+    try {
+      const data = await rescoreJob(job.id)
+      setJob(data.job)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Rescore failed')
+    } finally {
+      setRescoring(false)
+    }
+  }
+
+  async function handleSave() {
+    if (!job) return
+    setSaving(true)
+    try {
+      await saveApplication(job.id)
+      setSaved(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (loading) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-gray-400">Loading...</p></main>
+  if (error || !job) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-red-500">{error ?? 'Job not found'}</p></main>
+
+  const rec = job.ai_recommendation ? RECOMMENDATION_LABELS[job.ai_recommendation] : null
+  const breakdown = job.ai_score_breakdown ?? {}
+
+  return (
+    <main className="max-w-3xl mx-auto px-6 py-12 space-y-5">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <Link to="/jobs" className="text-xs text-gray-400 hover:text-gray-600 mb-2 inline-block">
+            &larr; My Jobs
+          </Link>
+          <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
+          {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleRescore}
+            disabled={rescoring}
+            className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {rescoring ? 'Rescoring...' : 'Re-score'}
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving || saved}
+            className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {saved ? 'Saved to Applications' : saving ? 'Saving...' : 'Save to Applications'}
+          </button>
+        </div>
+      </div>
+
+      {job.scoring_status === 'skipped' && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
+          This job was skipped due to a blocklist match.
+        </div>
+      )}
+
+      {job.scoring_status === 'failed' && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
+          Scoring failed for this job.
+        </div>
+      )}
+
+      {job.ai_score !== null && (
+        <>
+          {/* Scores + recommendation */}
+          <div className="bg-white border border-gray-200 rounded-lg p-6">
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <p className="text-4xl font-bold text-gray-900">{job.ai_score}<span className="text-lg text-gray-400">/100</span></p>
+                <p className="text-xs text-gray-500 mt-1">Match score</p>
+              </div>
+              {job.ats_score !== null && (
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-gray-900">{job.ats_score}<span className="text-sm text-gray-400">/100</span></p>
+                  <p className="text-xs text-gray-500 mt-1">ATS score</p>
+                </div>
+              )}
+            </div>
+            {job.ai_summary && <p className="text-sm text-gray-600 mb-4">{job.ai_summary}</p>}
+            {rec && (
+              <>
+                <div className={`inline-flex items-center px-3 py-1.5 rounded border text-sm font-medium ${rec.color}`}>
+                  {rec.label}
+                </div>
+                {job.ai_recommendation_reason && (
+                  <p className="text-xs text-gray-500 mt-2">{job.ai_recommendation_reason}</p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Score breakdown */}
+          {Object.keys(breakdown).length > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-6">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Score Breakdown</h4>
+              <div className="space-y-2">
+                {Object.entries(breakdown).map(([key, val]) => (
+                  <div key={key} className="flex items-center gap-3">
+                    <span className="text-xs text-gray-500 w-36 shrink-0 capitalize">{key.replace(/_/g, ' ')}</span>
+                    <div className="flex-1 bg-gray-100 rounded-full h-2">
+                      <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${val}%` }} />
+                    </div>
+                    <span className="text-xs text-gray-700 w-8 text-right">{val}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Skills */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(job.matched_skills?.length ?? 0) > 0 && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Matched Skills</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {job.matched_skills!.map(s => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {(job.missing_skills?.length ?? 0) > 0 && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Missing Skills</h4>
+                <div className="flex flex-wrap gap-1.5">
+                  {job.missing_skills!.map(s => (
+                    <span key={s} className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600">{s}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Flags */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {(job.ai_green_flags?.length ?? 0) > 0 && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Green Flags</h4>
+                <ul className="space-y-1">
+                  {job.ai_green_flags!.map(f => (
+                    <li key={f} className="text-sm text-green-700 flex gap-2"><span className="shrink-0">+</span><span>{f}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            {(job.ai_red_flags?.length ?? 0) > 0 && (
+              <div className="bg-white border border-gray-200 rounded-lg p-4">
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Red Flags</h4>
+                <ul className="space-y-1">
+                  {job.ai_red_flags!.map(f => (
+                    <li key={f} className="text-sm text-red-600 flex gap-2"><span className="shrink-0">-</span><span>{f}</span></li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+
+          {/* ATS improvements */}
+          {(job.ats_details?.improvements?.length ?? 0) > 0 && (
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ATS Improvements</h4>
+              <ul className="space-y-1">
+                {job.ats_details!.improvements.map(i => (
+                  <li key={i} className="text-sm text-gray-600 flex gap-2">
+                    <span className="shrink-0 text-gray-400">•</span><span>{i}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Meta */}
+          {(job.salary_assessment || job.application_effort) && (
+            <div className="flex gap-4 text-xs text-gray-500">
+              {job.salary_assessment && <span>{job.salary_assessment}</span>}
+              {job.application_effort && <span>{EFFORT_LABELS[job.application_effort] ?? job.application_effort}</span>}
+            </div>
+          )}
+        </>
+      )}
+
+      {job.company && <CompanyResearchCard companyName={job.company} />}
+    </main>
+  )
+}

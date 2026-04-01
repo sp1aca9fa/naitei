@@ -20,7 +20,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .single()
 
   if (error) return res.status(500).json({ error: error.message })
@@ -56,7 +56,7 @@ router.patch('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('profiles')
     .update(parsed.data)
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .select()
     .single()
 
@@ -129,7 +129,7 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
   const { data: profile } = await supabase
     .from('profiles')
     .select('resume_versions')
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .single()
 
   const existingVersions: unknown[] = Array.isArray(profile?.resume_versions) ? profile.resume_versions : []
@@ -137,8 +137,7 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
 
   const { data, error } = await supabase
     .from('profiles')
-    .upsert({
-      id: req.user!.id,
+    .update({
       raw_resume_text: resumeText,
       name: parsed2.name,
       skills: parsed2.skills,
@@ -148,6 +147,7 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
       resume_versions: [...existingVersions, newVersion],
       active_resume_version_id: versionId,
     })
+    .eq('user_id', req.user!.id)
     .select()
     .single()
 
@@ -166,7 +166,7 @@ router.post('/resume/preview', requireAuth, aiLimiter, async (req: Request, res:
   const { data: profile } = await supabase
     .from('profiles')
     .select('resume_versions')
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .single()
 
   const versions: { id: string; label: string; text: string; created_at: string }[] =
@@ -205,7 +205,7 @@ router.delete('/resume/:versionId', requireAuth, async (req: Request, res: Respo
   const { data: profile } = await supabase
     .from('profiles')
     .select('resume_versions, active_resume_version_id')
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .single()
 
   const versions: { id: string; label: string; text: string; created_at: string }[] =
@@ -222,7 +222,7 @@ router.delete('/resume/:versionId', requireAuth, async (req: Request, res: Respo
   const { data, error } = await supabase
     .from('profiles')
     .update({ resume_versions: remaining, active_resume_version_id: newActiveId })
-    .eq('id', req.user!.id)
+    .eq('user_id', req.user!.id)
     .select()
     .single()
 
