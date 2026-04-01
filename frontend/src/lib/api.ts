@@ -39,3 +39,24 @@ export async function uploadResume(file: File, label?: string) {
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }
+
+export async function previewResumeVersion(versionId: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/profile/resume/preview`, {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ version_id: versionId }),
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function deleteResumeVersion(versionId: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/profile/resume/${versionId}`, {
+    method: 'DELETE',
+    headers,
+  })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}

@@ -46,6 +46,7 @@ const UpdateProfileSchema = z.object({
   experience_years: z.number().int().optional(),
   experience_by_domain: z.array(z.object({ domain: z.string(), years: z.number() })).optional(),
   experience_summary: z.string().optional(),
+  active_resume_version_id: z.string().uuid().optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {
@@ -155,6 +156,78 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
     return res.status(500).json({ error: error.message, code: error.code, details: error.details, hint: error.hint })
   }
   return res.json({ profile: data, parsed: parsed2, version_id: versionId })
+})
+
+// POST /profile/resume/preview — re-parse a stored version without writing to DB
+router.post('/resume/preview', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const { version_id } = req.body
+  if (!version_id || typeof version_id !== 'string') return res.status(400).json({ error: 'version_id required' })
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('resume_versions')
+    .eq('id', req.user!.id)
+    .single()
+
+  const versions: { id: string; label: string; text: string; created_at: string }[] =
+    Array.isArray(profile?.resume_versions) ? profile.resume_versions : []
+  const version = versions.find(v => v.id === version_id)
+  if (!version) return res.status(404).json({ error: 'Version not found' })
+
+  const ai = getAIProvider()
+  let aiRaw: string
+  try {
+    aiRaw = await ai.complete(PARSE_RESUME_SYSTEM, parseResumePrompt(version.text))
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'AI call failed'
+    return res.status(502).json({ error: msg })
+  }
+
+  let aiJson: unknown
+  try {
+    aiJson = parseAIJson(aiRaw)
+  } catch {
+    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 500) })
+  }
+
+  const validation = ParsedResumeSchema.safeParse(aiJson)
+  if (!validation.success) {
+    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+  }
+
+  return res.json({ parsed: validation.data, version_id })
+})
+
+// DELETE /profile/resume/:versionId — remove a stored version
+router.delete('/resume/:versionId', requireAuth, async (req: Request, res: Response) => {
+  const { versionId } = req.params
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('resume_versions, active_resume_version_id')
+    .eq('id', req.user!.id)
+    .single()
+
+  const versions: { id: string; label: string; text: string; created_at: string }[] =
+    Array.isArray(profile?.resume_versions) ? profile.resume_versions : []
+  const remaining = versions.filter(v => v.id !== versionId)
+  if (remaining.length === versions.length) return res.status(404).json({ error: 'Version not found' })
+
+  // If we deleted the active version, set active to the most recent remaining one
+  let newActiveId = profile?.active_resume_version_id ?? null
+  if (newActiveId === versionId) {
+    newActiveId = remaining.length > 0 ? remaining[remaining.length - 1].id : null
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update({ resume_versions: remaining, active_resume_version_id: newActiveId })
+    .eq('id', req.user!.id)
+    .select()
+    .single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(data)
 })
 
 export default router

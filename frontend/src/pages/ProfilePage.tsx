@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getProfile, updateProfile, uploadResume } from '@/lib/api'
+import { getProfile, updateProfile, uploadResume, previewResumeVersion, deleteResumeVersion } from '@/lib/api'
 
 interface ScoreWeights {
   skills: number
@@ -12,6 +12,13 @@ interface ScoreWeights {
 interface DomainEntry {
   domain: string
   years: number
+}
+
+interface ResumeVersion {
+  id: string
+  label: string
+  text: string
+  created_at: string
 }
 
 interface Profile {
@@ -28,6 +35,7 @@ interface Profile {
   score_weights: ScoreWeights | null
   blocklist_words: string[] | null
   active_resume_version_id: string | null
+  resume_versions: ResumeVersion[] | null
 }
 
 interface ReviewState {
@@ -38,6 +46,7 @@ interface ReviewState {
   experience_summary: string
   oldProfile: Profile | null
   isManualEdit?: boolean
+  versionId?: string  // set when loading an old version; save will make it active
 }
 
 const DEFAULT_WEIGHTS: ScoreWeights = { skills: 30, language: 25, company: 20, location: 15, growth: 10 }
@@ -50,20 +59,61 @@ export function ProfilePage() {
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [uploadMsg, setUploadMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
-  const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [review, setReview] = useState<ReviewState | null>(null)
   const [skillInput, setSkillInput] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [prefsSaveStatus, setPrefsSaveStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
+  const weightsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const blocklistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastSavedWeightsRef = useRef<ScoreWeights | null>(null)
+  const lastSavedBlocklistRef = useRef<string[] | null>(null)
 
   useEffect(() => {
     getProfile()
       .then((p: Profile) => {
+        lastSavedWeightsRef.current = p.score_weights ?? DEFAULT_WEIGHTS
+        lastSavedBlocklistRef.current = p.blocklist_words ?? []
         setProfile(p)
         setWeights(p.score_weights ?? DEFAULT_WEIGHTS)
         setBlocklist(p.blocklist_words ?? [])
       })
       .catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (lastSavedWeightsRef.current === null) return
+    if (JSON.stringify(weights) === JSON.stringify(lastSavedWeightsRef.current)) return
+    if (weightsTimerRef.current) clearTimeout(weightsTimerRef.current)
+    setPrefsSaveStatus(null)
+    weightsTimerRef.current = setTimeout(async () => {
+      setPrefsSaveStatus('saving')
+      try {
+        await updateProfile({ score_weights: weights })
+        lastSavedWeightsRef.current = weights
+        setPrefsSaveStatus('saved')
+        setTimeout(() => setPrefsSaveStatus(null), 2000)
+      } catch {
+        setPrefsSaveStatus('error')
+      }
+    }, 700)
+    return () => { if (weightsTimerRef.current) clearTimeout(weightsTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weights])
+
+  useEffect(() => {
+    if (lastSavedBlocklistRef.current === null) return
+    if (JSON.stringify(blocklist) === JSON.stringify(lastSavedBlocklistRef.current)) return
+    if (blocklistTimerRef.current) clearTimeout(blocklistTimerRef.current)
+    blocklistTimerRef.current = setTimeout(async () => {
+      try {
+        await updateProfile({ blocklist_words: blocklist })
+        lastSavedBlocklistRef.current = blocklist
+      } catch { /* silent */ }
+    }, 300)
+    return () => { if (blocklistTimerRef.current) clearTimeout(blocklistTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blocklist])
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -73,7 +123,7 @@ export function ProfilePage() {
     setUploadMsg(null)
     setReview(null)
     try {
-      const res = await uploadResume(file)
+      const res = await uploadResume(file, file.name)
       setProfile(res.profile)
       setReview({
         name: res.parsed.name ?? '',
@@ -95,13 +145,15 @@ export function ProfilePage() {
     if (!review) return
     setSaving(true)
     try {
-      const updated = await updateProfile({
+      const body: Record<string, unknown> = {
         name: review.name,
         skills: review.skills,
         experience_years: review.experience_years,
         experience_by_domain: review.experience_by_domain,
         experience_summary: review.experience_summary,
-      })
+      }
+      if (review.versionId) body.active_resume_version_id = review.versionId
+      const updated = await updateProfile(body)
       setProfile(updated)
       setReview(null)
     } catch (err) {
@@ -132,25 +184,45 @@ export function ProfilePage() {
     }
   }
 
+  async function handleLoadVersion(versionId: string) {
+    const oldProfile = profile
+    setUploading(true)
+    setUploadMsg(null)
+    setReview(null)
+    try {
+      const res = await previewResumeVersion(versionId)
+      setReview({
+        name: res.parsed.name ?? '',
+        skills: res.parsed.skills ?? [],
+        experience_years: res.parsed.experience_years ?? 0,
+        experience_by_domain: res.parsed.experience_by_domain ?? [],
+        experience_summary: res.parsed.experience_summary ?? '',
+        oldProfile,
+        versionId,
+      })
+    } catch (err) {
+      setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to load version' })
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  async function handleDeleteVersion(versionId: string) {
+    try {
+      const updated = await deleteResumeVersion(versionId)
+      setProfile(updated)
+      setConfirmDeleteId(null)
+    } catch (err) {
+      setConfirmDeleteId(null)
+      setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Delete failed' })
+    }
+  }
+
   function addReviewSkill() {
     const s = skillInput.trim()
     if (!s || !review || review.skills.includes(s)) return
     setReview({ ...review, skills: [...review.skills, s] })
     setSkillInput('')
-  }
-
-  async function handleSavePreferences() {
-    setSaving(true)
-    setSaveMsg(null)
-    try {
-      const updated = await updateProfile({ score_weights: weights, blocklist_words: blocklist })
-      setProfile(updated)
-      setSaveMsg({ type: 'ok', text: 'Saved.' })
-    } catch (err) {
-      setSaveMsg({ type: 'err', text: err instanceof Error ? err.message : 'Save failed' })
-    } finally {
-      setSaving(false)
-    }
   }
 
   function addBlockword() {
@@ -346,6 +418,9 @@ export function ProfilePage() {
             </div>
 
             {/* Actions */}
+            {review.versionId && (
+              <p className="text-xs text-amber-700">Saving will make this the active version.</p>
+            )}
             <div className="flex flex-wrap gap-2 pt-1">
               <button
                 onClick={handleSaveCorrections}
@@ -364,6 +439,53 @@ export function ProfilePage() {
                 </button>
               )}
             </div>
+          </div>
+        )}
+
+        {/* Resume versions list */}
+        {profile?.resume_versions && profile.resume_versions.length > 0 && !review && (
+          <div className="space-y-1">
+            <p className="text-xs font-medium text-gray-600">Versions</p>
+            {[...profile.resume_versions].reverse().map(v => {
+              const isActive = v.id === profile.active_resume_version_id
+              const uploadedAt = new Date(v.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+              return (
+                <div key={v.id} className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm ${isActive ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50 border border-gray-200'}`}>
+                  <div>
+                    <span className={`font-medium ${isActive ? 'text-blue-800' : 'text-gray-700'}`}>{v.label}</span>
+                    <span className="text-xs text-gray-400 ml-2">{uploadedAt}</span>
+                    {isActive && <span className="text-xs text-blue-600 ml-2">active</span>}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {!isActive && confirmDeleteId !== v.id && (
+                      <button
+                        onClick={() => handleLoadVersion(v.id)}
+                        disabled={uploading}
+                        className="text-xs px-2 py-1 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded font-medium transition-colors disabled:opacity-50"
+                      >Load</button>
+                    )}
+                    {confirmDeleteId === v.id ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-gray-600">Delete?</span>
+                        <button
+                          onClick={() => handleDeleteVersion(v.id)}
+                          className="text-xs px-2 py-0.5 bg-red-500 hover:bg-red-600 text-white rounded font-medium"
+                        >Yes</button>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          className="text-xs px-2 py-0.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded font-medium"
+                        >No</button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDeleteId(v.id)}
+                        className="text-xs px-2 py-1 text-red-400 hover:text-red-600 font-medium transition-colors"
+                      >Delete</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
 
@@ -392,9 +514,14 @@ export function ProfilePage() {
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-semibold text-gray-800">Score Weights</h2>
-          <span className={`text-sm font-medium ${totalWeight === 100 ? 'text-green-600' : 'text-amber-600'}`}>
-            Total: {totalWeight}/100
-          </span>
+          <div className="flex items-center gap-3">
+            {prefsSaveStatus === 'saving' && <span className="text-xs text-gray-400">Saving...</span>}
+            {prefsSaveStatus === 'saved' && <span className="text-xs text-green-600">Saved</span>}
+            {prefsSaveStatus === 'error' && <span className="text-xs text-red-500">Save failed</span>}
+            <span className={`text-sm font-medium ${totalWeight === 100 ? 'text-green-600' : 'text-amber-600'}`}>
+              Total: {totalWeight}/100
+            </span>
+          </div>
         </div>
         <p className="text-xs text-gray-500">Adjust how each category affects your job-fit score.</p>
 
@@ -450,20 +577,6 @@ export function ProfilePage() {
         )}
       </section>
 
-      <div className="flex items-center gap-4">
-        <button
-          onClick={handleSavePreferences}
-          disabled={saving}
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg disabled:opacity-50"
-        >
-          {saving ? 'Saving...' : 'Save preferences'}
-        </button>
-        {saveMsg && (
-          <p className={`text-sm ${saveMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
-            {saveMsg.text}
-          </p>
-        )}
-      </div>
     </div>
   )
 }
