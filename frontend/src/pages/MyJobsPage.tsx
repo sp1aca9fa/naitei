@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { getJobs, deleteJob, importRemotive } from '../lib/api'
+import { getJobs, getProfile, deleteJob, importRemotive, importAdzuna, importRemoteOk } from '../lib/api'
 
 interface JobSummary {
   id: string
@@ -39,34 +39,46 @@ function scoreBadgeColor(score: number | null): string {
 
 export function MyJobsPage() {
   const [jobs, setJobs] = useState<JobSummary[]>([])
+  const [displayMinScore, setDisplayMinScore] = useState(50)
+  const [displayShowSkipped, setDisplayShowSkipped] = useState(false)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
-  const [importing, setImporting] = useState(false)
+  const [importing, setImporting] = useState<'remotive' | 'adzuna' | 'remoteok' | null>(null)
   const [importResult, setImportResult] = useState<string | null>(null)
 
   useEffect(() => {
-    getJobs()
-      .then(setJobs)
+    Promise.all([getJobs(), getProfile()])
+      .then(([jobsData, profile]) => {
+        setJobs(jobsData)
+        setDisplayMinScore(profile.display_min_score ?? 50)
+        setDisplayShowSkipped(profile.display_show_skipped ?? false)
+      })
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load jobs'))
       .finally(() => setLoading(false))
   }, [])
 
-  async function handleImportRemotive() {
-    setImporting(true)
+  async function handleImport(source: 'remotive' | 'adzuna' | 'remoteok') {
+    setImporting(source)
     setImportResult(null)
     try {
-      const result = await importRemotive()
-      setImportResult(`Imported ${result.imported} new job${result.imported !== 1 ? 's' : ''}${result.failed ? `, ${result.failed} failed` : ''} (${result.skipped} already in your list)`)
+      const result = source === 'remotive' ? await importRemotive() : source === 'remoteok' ? await importRemoteOk() : await importAdzuna()
+      const parts: string[] = [`Imported ${result.imported} new job${result.imported !== 1 ? 's' : ''}`]
+      if (result.failed) parts.push(`${result.failed} failed`)
+      if (result.filtered) parts.push(`${result.filtered} filtered (no skill match)`)
+      if (result.remaining > 0) parts.push(`${result.remaining} more available — press again to continue`)
+      else if (result.already_imported > 0) parts.push(`all caught up`)
+      setImportResult(parts.join(', '))
       if (result.imported > 0) {
         const updated = await getJobs()
         setJobs(updated)
       }
     } catch (err) {
-      setImportResult(err instanceof Error ? err.message : 'Import failed')
+      const raw = err instanceof Error ? err.message : 'Import failed'
+      try { setImportResult(JSON.parse(raw).error ?? raw) } catch { setImportResult(raw) }
     } finally {
-      setImporting(false)
+      setImporting(null)
     }
   }
 
@@ -91,12 +103,20 @@ export function MyJobsPage() {
           <p className="text-sm text-gray-400">{jobs.length} analyzed job{jobs.length !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Adzuna button hidden — JP not supported by Adzuna API; re-enable if targeting other countries */}
           <button
-            onClick={handleImportRemotive}
-            disabled={importing}
+            onClick={() => handleImport('remoteok')}
+            disabled={importing !== null}
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {importing ? 'Importing...' : 'Import from Remotive'}
+            {importing === 'remoteok' ? 'Importing...' : 'Import from RemoteOK'}
+          </button>
+          <button
+            onClick={() => handleImport('remotive')}
+            disabled={importing !== null}
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {importing === 'remotive' ? 'Importing...' : 'Import from Remotive'}
           </button>
           <Link
             to="/jobs/analyze"
@@ -123,9 +143,28 @@ export function MyJobsPage() {
         </div>
       )}
 
-      {jobs.length > 0 && (
-        <div className="space-y-2">
-          {jobs.map(job => (
+      {jobs.some(j => j.source === 'remoteok') && (
+        <p className="text-xs text-gray-400">
+          Some jobs sourced from <a href="https://remoteok.com" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">RemoteOK</a>
+        </p>
+      )}
+
+      {jobs.length > 0 && (() => {
+        const visibleJobs = jobs.filter(j => {
+          if (!displayShowSkipped && j.ai_recommendation === 'skip') return false
+          if (j.ai_score !== null && j.ai_score < displayMinScore) return false
+          return true
+        })
+        const hiddenCount = jobs.length - visibleJobs.length
+        return (
+          <>
+            {hiddenCount > 0 && (
+              <p className="text-xs text-gray-400">
+                {hiddenCount} job{hiddenCount !== 1 ? 's' : ''} hidden by your filter settings — <Link to="/profile" className="underline hover:text-gray-600">adjust in Profile</Link>
+              </p>
+            )}
+            <div className="space-y-2">
+              {visibleJobs.map(job => (
             <div key={job.id} className="bg-white border border-gray-200 rounded-lg p-4 hover:border-gray-300 transition-all">
               <div className="flex items-start justify-between gap-3">
                 <Link to={`/jobs/${job.id}`} className="min-w-0 flex-1">
@@ -188,9 +227,11 @@ export function MyJobsPage() {
                 </span>
               </div>
             </div>
-          ))}
-        </div>
-      )}
+              ))}
+            </div>
+          </>
+        )
+      })()}
     </main>
   )
 }

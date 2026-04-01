@@ -47,6 +47,8 @@ const UpdateProfileSchema = z.object({
   experience_by_domain: z.array(z.object({ domain: z.string(), years: z.number() })).optional(),
   experience_summary: z.string().optional(),
   active_resume_version_id: z.string().uuid().optional(),
+  display_min_score: z.number().int().min(0).max(100).optional(),
+  display_show_skipped: z.boolean().optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {
@@ -219,9 +221,13 @@ router.delete('/resume/:versionId', requireAuth, async (req: Request, res: Respo
     newActiveId = remaining.length > 0 ? remaining[remaining.length - 1].id : null
   }
 
+  const clearResumeFields = remaining.length === 0
+    ? { skills: null, raw_resume_text: null, experience_years: null, experience_by_domain: null, experience_summary: null }
+    : {}
+
   const { data, error } = await supabase
     .from('profiles')
-    .update({ resume_versions: remaining, active_resume_version_id: newActiveId })
+    .update({ resume_versions: remaining, active_resume_version_id: newActiveId, ...clearResumeFields })
     .eq('user_id', req.user!.id)
     .select()
     .single()

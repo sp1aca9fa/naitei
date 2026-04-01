@@ -1,9 +1,10 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { importPasteJob, importUrlJob } from '../lib/api'
+import { useState, useEffect } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
+import { importPasteJob, importUrlJob, getProfile } from '../lib/api'
 
 export function AnalyzePage() {
   const navigate = useNavigate()
+  const [hasSkills, setHasSkills] = useState<boolean | null>(null)
   const [url, setUrl] = useState('')
   const [fetching, setFetching] = useState(false)
   const [fetchError, setFetchError] = useState<string | null>(null)
@@ -14,6 +15,10 @@ export function AnalyzePage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [skipped, setSkipped] = useState<string | null>(null)
+
+  useEffect(() => {
+    getProfile().then(p => setHasSkills((p.skills?.length ?? 0) > 0)).catch(() => setHasSkills(false))
+  }, [])
 
   async function handleUrlChange(value: string) {
     setUrl(value)
@@ -77,6 +82,12 @@ export function AnalyzePage() {
         <p className="text-sm text-gray-400">Paste a job description to score it against your profile.</p>
       </div>
 
+      {hasSkills === false && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800 mb-4">
+          Upload your resume on the <Link to="/profile" className="underline font-medium">Profile page</Link> before analyzing jobs.
+        </div>
+      )}
+
       <div className="bg-white border border-gray-200 rounded-lg p-6 flex flex-col flex-1">
         <div className="mb-4">
           <input
@@ -121,7 +132,7 @@ export function AnalyzePage() {
           />
           <button
             type="submit"
-            disabled={loading || description.trim().length < 50}
+            disabled={loading || !hasSkills || description.trim().length < 50}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed self-start"
           >
             {loading ? 'Analyzing...' : 'Analyze Job'}

@@ -36,6 +36,8 @@ interface Profile {
   blocklist_words: string[] | null
   active_resume_version_id: string | null
   resume_versions: ResumeVersion[] | null
+  display_min_score: number | null
+  display_show_skipped: boolean | null
 }
 
 interface ReviewState {
@@ -62,21 +64,30 @@ export function ProfilePage() {
   const [review, setReview] = useState<ReviewState | null>(null)
   const [skillInput, setSkillInput] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [displayMinScore, setDisplayMinScore] = useState(50)
+  const [displayShowSkipped, setDisplayShowSkipped] = useState(false)
   const [prefsSaveStatus, setPrefsSaveStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const weightsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blocklistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const displayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedWeightsRef = useRef<ScoreWeights | null>(null)
   const lastSavedBlocklistRef = useRef<string[] | null>(null)
+  const lastSavedDisplayRef = useRef<{ min_score: number; show_skipped: boolean } | null>(null)
 
   useEffect(() => {
     getProfile()
       .then((p: Profile) => {
+        const minScore = p.display_min_score ?? 50
+        const showSkipped = p.display_show_skipped ?? false
         lastSavedWeightsRef.current = p.score_weights ?? DEFAULT_WEIGHTS
         lastSavedBlocklistRef.current = p.blocklist_words ?? []
+        lastSavedDisplayRef.current = { min_score: minScore, show_skipped: showSkipped }
         setProfile(p)
         setWeights(p.score_weights ?? DEFAULT_WEIGHTS)
         setBlocklist(p.blocklist_words ?? [])
+        setDisplayMinScore(minScore)
+        setDisplayShowSkipped(showSkipped)
       })
       .catch(() => {})
   }, [])
@@ -114,6 +125,21 @@ export function ProfilePage() {
     return () => { if (blocklistTimerRef.current) clearTimeout(blocklistTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blocklist])
+
+  useEffect(() => {
+    if (lastSavedDisplayRef.current === null) return
+    const current = { min_score: displayMinScore, show_skipped: displayShowSkipped }
+    if (JSON.stringify(current) === JSON.stringify(lastSavedDisplayRef.current)) return
+    if (displayTimerRef.current) clearTimeout(displayTimerRef.current)
+    displayTimerRef.current = setTimeout(async () => {
+      try {
+        await updateProfile({ display_min_score: displayMinScore, display_show_skipped: displayShowSkipped })
+        lastSavedDisplayRef.current = current
+      } catch { /* silent */ }
+    }, 500)
+    return () => { if (displayTimerRef.current) clearTimeout(displayTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [displayMinScore, displayShowSkipped])
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -575,6 +601,41 @@ export function ProfilePage() {
             ))}
           </div>
         )}
+      </section>
+
+      {/* Job list display settings */}
+      <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-800">Job List Filters</h2>
+        <p className="text-xs text-gray-500">Control which jobs appear in your list by default.</p>
+
+        <div className="space-y-1">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-700">Minimum match score</span>
+            <span className="font-mono text-gray-600">{displayMinScore}</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            value={displayMinScore}
+            onChange={e => setDisplayMinScore(Number(e.target.value))}
+            className="w-full accent-blue-600"
+          />
+          <p className="text-xs text-gray-400">Jobs scored below this will be hidden. Set to 0 to show all.</p>
+        </div>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={displayShowSkipped}
+            onChange={e => setDisplayShowSkipped(e.target.checked)}
+            className="w-4 h-4 accent-blue-600"
+          />
+          <div>
+            <span className="text-sm text-gray-700">Show jobs recommended to skip</span>
+            <p className="text-xs text-gray-400">Hidden by default. Enable to see jobs the AI flagged as not a good fit.</p>
+          </div>
+        </label>
       </section>
 
     </div>

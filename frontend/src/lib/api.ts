@@ -101,9 +101,23 @@ export async function importPasteJob(body: { description: string; title?: string
   return res.json()
 }
 
-export async function importRemotive(): Promise<{ imported: number; skipped: number; failed?: number; total: number }> {
+export async function importAdzuna(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/import/adzuna`, { method: 'POST', headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function importRemotive(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/remotive`, { method: 'POST', headers })
+  if (!res.ok) throw new Error(await res.text())
+  return res.json()
+}
+
+export async function importRemoteOk(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/jobs/import/remoteok`, { method: 'POST', headers })
   if (!res.ok) throw new Error(await res.text())
   return res.json()
 }

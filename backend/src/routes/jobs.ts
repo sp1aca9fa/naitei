@@ -8,6 +8,18 @@ import { supabase } from '../lib/supabase'
 import { scoreJob } from '../services/scoreJob'
 import { scrapeJobUrl } from '../services/scrapeJobUrl'
 
+interface AdzunaJob {
+  id: string
+  title: string
+  company: { display_name: string }
+  description: string
+  redirect_url: string
+  created: string
+  salary_min?: number
+  salary_max?: number
+  location: { display_name: string }
+}
+
 interface RemotiveJob {
   id: number
   url: string
@@ -18,6 +30,18 @@ interface RemotiveJob {
   salary: string
   job_type: string
   candidate_required_location: string
+}
+
+interface RemoteOkJob {
+  id: string
+  url: string
+  position: string
+  company: string
+  description: string
+  date: string
+  salary_min?: number
+  salary_max?: number
+  tags?: string[]
 }
 
 const router = Router()
@@ -51,6 +75,9 @@ router.post('/import/url', requireAuth, async (req: Request, res: Response) => {
 
 // POST /jobs/import/paste — paste raw job description, score immediately
 router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
+  if (!profileData?.skills?.length) return res.status(400).json({ error: 'Add your skills to your profile before analyzing jobs.' })
+
   const parsed = PasteImportSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() })
 
@@ -91,62 +118,54 @@ router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: R
 
 // POST /jobs/import/remotive — fetch software-dev jobs from Remotive, deduplicate, score new ones
 router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
+  const userSkills: string[] = profileData?.skills ?? []
+  if (userSkills.length === 0) return res.status(400).json({ error: 'Add your skills to your profile before importing jobs.' })
+
   let remotiveJobs: RemotiveJob[]
   try {
-    const response = await axios.get('https://remotive.com/api/remote-jobs?category=software-dev', {
-      timeout: 15000,
-    })
+    const response = await axios.get('https://remotive.com/api/remote-jobs?category=software-dev', { timeout: 15000 })
     remotiveJobs = response.data.jobs ?? []
   } catch {
     return res.status(502).json({ error: 'Failed to fetch from Remotive' })
   }
 
-  // Get existing URLs for this user to deduplicate
-  const { data: existingRows } = await supabase
-    .from('jobs')
-    .select('url')
-    .eq('user_id', req.user!.id)
-    .not('url', 'is', null)
-
+  const { data: existingRows } = await supabase.from('jobs').select('url').eq('user_id', req.user!.id).not('url', 'is', null)
   const existingUrls = new Set((existingRows ?? []).map((j: { url: string }) => j.url))
 
-  // Filter new, cap at 20 most recent
   const now = Date.now()
-  const newJobs = remotiveJobs
-    .filter(j => j.url && !existingUrls.has(j.url))
-    .slice(0, 20)
+  const trulyNew = remotiveJobs.filter(j => j.url && !existingUrls.has(j.url))
+  const already_imported = remotiveJobs.length - trulyNew.length
+  const toImport = trulyNew.slice(0, 20)
+  const remaining = trulyNew.length - toImport.length
 
-  if (newJobs.length === 0) {
-    return res.json({ imported: 0, skipped: remotiveJobs.length - newJobs.length, total: remotiveJobs.length })
-  }
+  if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: remotiveJobs.length })
 
-  let imported = 0
-  let failed = 0
+  let imported = 0, failed = 0, filtered = 0
 
-  for (const rj of newJobs) {
+  for (const rj of toImport) {
     const description = rj.description
       ? cheerio.load(rj.description).text().replace(/\s+/g, ' ').trim().slice(0, 8000)
       : ''
     if (description.length < 50) { failed++; continue }
 
+    const descLower = description.toLowerCase()
+    if (!userSkills.some(s => descLower.includes(s.toLowerCase()))) { filtered++; continue }
+
     const postedAt = rj.publication_date ? new Date(rj.publication_date) : null
     const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
 
-    const { data: job, error: insertError } = await supabase
-      .from('jobs')
-      .insert({
-        user_id: req.user!.id,
-        title: (rj.title ?? 'Remote Job').slice(0, 200),
-        company: rj.company_name?.slice(0, 200) ?? null,
-        description_raw: description,
-        url: rj.url,
-        source: 'remotive',
-        posted_at: postedAt?.toISOString() ?? null,
-        is_recent: isRecent,
-        scoring_status: 'pending',
-      })
-      .select()
-      .single()
+    const { data: job, error: insertError } = await supabase.from('jobs').insert({
+      user_id: req.user!.id,
+      title: (rj.title ?? 'Remote Job').slice(0, 200),
+      company: rj.company_name?.slice(0, 200) ?? null,
+      description_raw: description,
+      url: rj.url,
+      source: 'remotive',
+      posted_at: postedAt?.toISOString() ?? null,
+      is_recent: isRecent,
+      scoring_status: 'pending',
+    }).select().single()
 
     if (insertError || !job) { failed++; continue }
 
@@ -158,7 +177,150 @@ router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res
     }
   }
 
-  return res.json({ imported, failed, skipped: remotiveJobs.length - newJobs.length, total: remotiveJobs.length })
+  return res.json({ imported, failed, filtered, already_imported, remaining, total: remotiveJobs.length })
+})
+
+// POST /jobs/import/adzuna — fetch Tokyo software jobs from Adzuna, deduplicate, score new ones
+router.post('/import/adzuna', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
+  const userSkills: string[] = profileData?.skills ?? []
+  if (userSkills.length === 0) return res.status(400).json({ error: 'Add your skills to your profile before importing jobs.' })
+
+  const appId = process.env.ADZUNA_APP_ID
+  const appKey = process.env.ADZUNA_APP_KEY
+  if (!appId || !appKey) return res.status(500).json({ error: 'Adzuna credentials not configured' })
+
+  let adzunaJobs: AdzunaJob[]
+  try {
+    const response = await axios.get(`https://api.adzuna.com/v1/api/jobs/jp/search/1`, {
+      params: { app_id: appId, app_key: appKey, results_per_page: 50, what: 'software engineer developer', where: 'Tokyo' },
+      timeout: 15000,
+    })
+    adzunaJobs = response.data.results ?? []
+  } catch (err) {
+    const detail = axios.isAxiosError(err) ? `${err.response?.status} ${JSON.stringify(err.response?.data)}` : String(err)
+    console.error('Adzuna fetch error:', detail)
+    return res.status(502).json({ error: 'Failed to fetch from Adzuna', detail })
+  }
+
+  const { data: existingRows } = await supabase.from('jobs').select('url').eq('user_id', req.user!.id).not('url', 'is', null)
+  const existingUrls = new Set((existingRows ?? []).map((j: { url: string }) => j.url))
+
+  const now = Date.now()
+  const trulyNewAdzuna = adzunaJobs.filter(j => j.redirect_url && !existingUrls.has(j.redirect_url))
+  const already_imported = adzunaJobs.length - trulyNewAdzuna.length
+  const toImport = trulyNewAdzuna.slice(0, 20)
+  const remaining = trulyNewAdzuna.length - toImport.length
+
+  if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: adzunaJobs.length })
+
+  let imported = 0, failed = 0, filtered = 0
+
+  for (const aj of toImport) {
+    const description = aj.description?.replace(/\s+/g, ' ').trim().slice(0, 8000) ?? ''
+    if (description.length < 50) { failed++; continue }
+
+    const descLower = description.toLowerCase()
+    if (!userSkills.some(s => descLower.includes(s.toLowerCase()))) { filtered++; continue }
+
+    const postedAt = aj.created ? new Date(aj.created) : null
+    const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
+
+    const { data: job, error: insertError } = await supabase.from('jobs').insert({
+      user_id: req.user!.id,
+      title: (aj.title ?? 'Software Job').slice(0, 200),
+      company: aj.company?.display_name?.slice(0, 200) ?? null,
+      description_raw: description,
+      url: aj.redirect_url,
+      source: 'adzuna',
+      location: aj.location?.display_name ?? null,
+      salary_min: aj.salary_min ?? null,
+      salary_max: aj.salary_max ?? null,
+      posted_at: postedAt?.toISOString() ?? null,
+      is_recent: isRecent,
+      scoring_status: 'pending',
+    }).select().single()
+
+    if (insertError || !job) { failed++; continue }
+
+    try {
+      await scoreJob(job.id, req.user!.id)
+      imported++
+    } catch {
+      failed++
+    }
+  }
+
+  return res.json({ imported, failed, filtered, already_imported, remaining, total: adzunaJobs.length })
+})
+
+// POST /jobs/import/remoteok — fetch remote dev jobs from RemoteOK, deduplicate, score new ones
+router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
+  const userSkills: string[] = profileData?.skills ?? []
+  if (userSkills.length === 0) return res.status(400).json({ error: 'Add your skills to your profile before importing jobs.' })
+
+  let rawJobs: RemoteOkJob[]
+  try {
+    const response = await axios.get('https://remoteok.com/api', {
+      timeout: 15000,
+      headers: { 'User-Agent': 'naitei-job-dashboard/1.0' },
+    })
+    rawJobs = (response.data as unknown[]).filter((j): j is RemoteOkJob => !!(j as RemoteOkJob).url && !!(j as RemoteOkJob).position)
+  } catch {
+    return res.status(502).json({ error: 'Failed to fetch from RemoteOK' })
+  }
+
+  const { data: existingRows } = await supabase.from('jobs').select('url').eq('user_id', req.user!.id).not('url', 'is', null)
+  const existingUrls = new Set((existingRows ?? []).map((j: { url: string }) => j.url))
+
+  const now = Date.now()
+  const trulyNewRok = rawJobs.filter(j => j.url && !existingUrls.has(j.url))
+  const already_imported = rawJobs.length - trulyNewRok.length
+  const toImport = trulyNewRok.slice(0, 20)
+  const remaining = trulyNewRok.length - toImport.length
+
+  if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: rawJobs.length })
+
+  let imported = 0, failed = 0, filtered = 0
+
+  for (const rj of toImport) {
+    const description = rj.description
+      ? cheerio.load(rj.description).text().replace(/\s+/g, ' ').trim().slice(0, 8000)
+      : ''
+    if (description.length < 50) { failed++; continue }
+
+    const descLower = description.toLowerCase()
+    if (!userSkills.some(s => descLower.includes(s.toLowerCase()))) { filtered++; continue }
+
+    const postedAt = rj.date ? new Date(rj.date) : null
+    const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
+
+    const { data: job, error: insertError } = await supabase.from('jobs').insert({
+      user_id: req.user!.id,
+      title: (rj.position ?? 'Remote Job').slice(0, 200),
+      company: rj.company?.slice(0, 200) ?? null,
+      description_raw: description,
+      url: rj.url,
+      source: 'remoteok',
+      posted_at: postedAt?.toISOString() ?? null,
+      is_recent: isRecent,
+      salary_min: rj.salary_min ?? null,
+      salary_max: rj.salary_max ?? null,
+      scoring_status: 'pending',
+    }).select().single()
+
+    if (insertError || !job) { failed++; continue }
+
+    try {
+      await scoreJob(job.id, req.user!.id)
+      imported++
+    } catch {
+      failed++
+    }
+  }
+
+  return res.json({ imported, failed, filtered, already_imported, remaining, total: rawJobs.length })
 })
 
 // GET /jobs — list user's jobs, most recent first
