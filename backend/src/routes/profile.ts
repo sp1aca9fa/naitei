@@ -1,6 +1,9 @@
 import { Router, Request, Response } from 'express'
 import multer from 'multer'
 import { z } from 'zod'
+import { tmpdir } from 'os'
+import { writeFileSync, unlinkSync } from 'fs'
+import { join } from 'path'
 import { requireAuth } from '../middleware/auth'
 import { aiLimiter } from '../middleware/rateLimiter'
 import { getAIProvider } from '../services/ai/provider'
@@ -37,6 +40,12 @@ const UpdateProfileSchema = z.object({
     growth: z.number().int().min(0).max(100),
   }).optional(),
   blocklist_words: z.array(z.string()).optional(),
+  // resume corrections
+  name: z.string().optional(),
+  skills: z.array(z.string()).optional(),
+  experience_years: z.number().int().optional(),
+  experience_by_domain: z.array(z.object({ domain: z.string(), years: z.number() })).optional(),
+  experience_summary: z.string().optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {
@@ -60,18 +69,24 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
   if (req.file.mimetype !== 'application/pdf') return res.status(400).json({ error: 'Only PDF files accepted' })
 
   let resumeText: string
+  const tmpPath = join(tmpdir(), `resume-${Date.now()}-${Math.random().toString(36).slice(2)}.pdf`)
   try {
+    writeFileSync(tmpPath, req.file!.buffer)
+    // Clear the entire pdf2json module tree to avoid pdfjs global state corruption between requests
+    Object.keys(require.cache).forEach(key => { if (key.includes('pdf2json')) delete require.cache[key] })
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     const PDFParser = require('pdf2json')
     const pdfParser = new PDFParser(null, 1)
     resumeText = await new Promise<string>((resolve, reject) => {
       pdfParser.on('pdfParser_dataReady', () => resolve(pdfParser.getRawTextContent() as string))
       pdfParser.on('pdfParser_dataError', (err: { parserError: Error }) => reject(err.parserError))
-      pdfParser.parseBuffer(req.file!.buffer)
+      pdfParser.loadPDF(tmpPath)
     }).then(t => t.trim())
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     return res.status(422).json({ error: 'Could not extract text from PDF', detail: msg })
+  } finally {
+    try { unlinkSync(tmpPath) } catch {}
   }
 
   if (!resumeText) return res.status(422).json({ error: 'PDF appears to be empty or image-only' })
@@ -81,15 +96,23 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
   try {
     aiRaw = await ai.complete(PARSE_RESUME_SYSTEM, parseResumePrompt(resumeText))
   } catch (err) {
+    console.error('[POST /profile/resume] AI call failed:', err)
     const msg = err instanceof Error ? err.message : 'AI call failed'
-    return res.status(502).json({ error: msg })
+    const extra: Record<string, unknown> = {}
+    if (err && typeof err === 'object') {
+      const e = err as Record<string, unknown>
+      if (e['status'] !== undefined) extra['status'] = e['status']
+      if (e['errorDetails'] !== undefined) extra['errorDetails'] = e['errorDetails']
+    }
+    return res.status(502).json({ error: msg, ...extra })
   }
 
   let aiJson: unknown
   try {
     aiJson = parseAIJson(aiRaw)
-  } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 200) })
+  } catch (err) {
+    console.error('[POST /profile/resume] JSON parse failed. Raw AI output:', aiRaw)
+    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 500) })
   }
 
   const validation = ParsedResumeSchema.safeParse(aiJson)
@@ -113,20 +136,24 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
 
   const { data, error } = await supabase
     .from('profiles')
-    .update({
+    .upsert({
+      id: req.user!.id,
       raw_resume_text: resumeText,
       name: parsed2.name,
       skills: parsed2.skills,
       experience_years: parsed2.experience_years,
+      experience_by_domain: parsed2.experience_by_domain,
       experience_summary: parsed2.experience_summary,
       resume_versions: [...existingVersions, newVersion],
       active_resume_version_id: versionId,
     })
-    .eq('id', req.user!.id)
     .select()
     .single()
 
-  if (error) return res.status(500).json({ error: error.message })
+  if (error) {
+    console.error('[POST /profile/resume] Supabase update failed:', JSON.stringify({ message: error.message, code: error.code, details: error.details, hint: error.hint }))
+    return res.status(500).json({ error: error.message, code: error.code, details: error.details, hint: error.hint })
+  }
   return res.json({ profile: data, parsed: parsed2, version_id: versionId })
 })
 

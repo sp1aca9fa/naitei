@@ -46,12 +46,27 @@ class GeminiProvider implements AIProvider {
 
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
     const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' })
-    const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
-    const candidate = result.response.candidates?.[0]
-    if (!candidate) throw new Error(`Gemini returned no candidates. Prompt feedback: ${JSON.stringify(result.response.promptFeedback)}`)
-    const text = candidate.content.parts.map(p => p.text ?? '').join('')
-    if (!text) throw new Error(`Gemini response empty. Finish reason: ${candidate.finishReason}`)
-    return text
+    try {
+      const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
+      const candidate = result.response.candidates?.[0]
+      if (!candidate) throw new Error(`Gemini returned no candidates. Prompt feedback: ${JSON.stringify(result.response.promptFeedback)}`)
+      const text = candidate.content.parts.map(p => p.text ?? '').join('')
+      if (!text) throw new Error(`Gemini response empty. Finish reason: ${candidate.finishReason}, safety: ${JSON.stringify(candidate.safetyRatings)}`)
+      return text
+    } catch (err) {
+      console.error('[GeminiProvider] error:', err)
+      if (err && typeof err === 'object') {
+        const e = err as Record<string, unknown>
+        console.error('[GeminiProvider] error details:', JSON.stringify({
+          message: e['message'],
+          status: e['status'],
+          statusText: e['statusText'],
+          errorDetails: e['errorDetails'],
+          body: e['body'],
+        }, null, 2))
+      }
+      throw err
+    }
   }
 }
 
@@ -77,11 +92,52 @@ class OllamaProvider implements AIProvider {
   }
 }
 
+const MOCK_RESUMES: Record<string, object> = {
+  'Maria Santos': {
+    name: 'Maria Santos',
+    skills: ['HTML', 'CSS', 'JavaScript', 'TypeScript', 'React', 'Tailwind CSS', 'Git', 'Figma', 'Jest', 'Node.js', 'SQL', 'Accessibility'],
+    experience_years: 10,
+    experience_by_domain: [
+      { domain: 'Education / Teaching', years: 8 },
+      { domain: 'Web Development', years: 2 },
+    ],
+    experience_summary: '8 years as a mathematics teacher followed by 2 years in web development (freelance and startup).',
+    education: 'B.Ed. in Mathematics Education, University of the Philippines, 2014; Web Development Bootcamp, Le Wagon Tokyo, 2023',
+    notable_projects: ['EduTech interactive learning modules', 'Freelance portfolio and landing page sites', 'School-wide grade tracking tool'],
+    languages_spoken: ['English', 'Japanese', 'Filipino'],
+  },
+  'Kenji Watanabe': {
+    name: 'Kenji Watanabe',
+    skills: ['JavaScript', 'TypeScript', 'React', 'Node.js', 'HTML', 'CSS', 'Git', 'PostgreSQL', 'Express', 'REST APIs'],
+    experience_years: 6,
+    experience_by_domain: [
+      { domain: 'Web Development', years: 2 },
+      { domain: 'Digital Marketing', years: 4 },
+    ],
+    experience_summary: '2 years of web development (frontend and Node.js backend) after a 4-year career in digital marketing.',
+    education: 'BA in Business Administration, Waseda University, 2018',
+    notable_projects: ['E-commerce redesign', 'Internal CRM dashboard'],
+    languages_spoken: ['Japanese', 'English'],
+  },
+}
+
+class MockProvider implements AIProvider {
+  name = 'mock'
+
+  async complete(_systemPrompt: string, userPrompt: string): Promise<string> {
+    const match = Object.keys(MOCK_RESUMES).find(name => userPrompt.includes(name))
+    const data = match ? MOCK_RESUMES[match] : MOCK_RESUMES['Kenji Watanabe']
+    console.log(`[MockProvider] returning mock JSON for: ${(data as { name: string }).name}`)
+    return JSON.stringify(data)
+  }
+}
+
 export function getAIProvider(): AIProvider {
   switch (process.env.AI_PROVIDER) {
     case 'openai': return new OpenAIProvider()
     case 'gemini': return new GeminiProvider()
     case 'ollama': return new OllamaProvider()
+    case 'mock':   return new MockProvider()
     default:       return new ClaudeProvider()
   }
 }

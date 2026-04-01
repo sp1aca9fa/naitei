@@ -9,6 +9,11 @@ interface ScoreWeights {
   growth: number
 }
 
+interface DomainEntry {
+  domain: string
+  years: number
+}
+
 interface Profile {
   id: string
   name: string | null
@@ -18,10 +23,21 @@ interface Profile {
   work_style: string | null
   skills: string[] | null
   experience_years: number | null
+  experience_by_domain: DomainEntry[] | null
   experience_summary: string | null
   score_weights: ScoreWeights | null
   blocklist_words: string[] | null
   active_resume_version_id: string | null
+}
+
+interface ReviewState {
+  name: string
+  skills: string[]
+  experience_years: number
+  experience_by_domain: DomainEntry[]
+  experience_summary: string
+  oldProfile: Profile | null
+  isManualEdit?: boolean
 }
 
 const DEFAULT_WEIGHTS: ScoreWeights = { skills: 30, language: 25, company: 20, location: 15, growth: 10 }
@@ -35,6 +51,8 @@ export function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploadMsg, setUploadMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [review, setReview] = useState<ReviewState | null>(null)
+  const [skillInput, setSkillInput] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -50,18 +68,75 @@ export function ProfilePage() {
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
     if (!file) return
+    const oldProfile = profile
     setUploading(true)
     setUploadMsg(null)
+    setReview(null)
     try {
       const res = await uploadResume(file)
       setProfile(res.profile)
-      setUploadMsg({ type: 'ok', text: `Parsed successfully. Detected ${res.parsed.skills?.length ?? 0} skills.` })
+      setReview({
+        name: res.parsed.name ?? '',
+        skills: res.parsed.skills ?? [],
+        experience_years: res.parsed.experience_years ?? 0,
+        experience_by_domain: res.parsed.experience_by_domain ?? [],
+        experience_summary: res.parsed.experience_summary ?? '',
+        oldProfile,
+      })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Upload failed' })
     } finally {
       setUploading(false)
       if (fileRef.current) fileRef.current.value = ''
     }
+  }
+
+  async function handleSaveCorrections() {
+    if (!review) return
+    setSaving(true)
+    try {
+      const updated = await updateProfile({
+        name: review.name,
+        skills: review.skills,
+        experience_years: review.experience_years,
+        experience_by_domain: review.experience_by_domain,
+        experience_summary: review.experience_summary,
+      })
+      setProfile(updated)
+      setReview(null)
+    } catch (err) {
+      setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Save failed' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleRevertReview() {
+    if (!review?.oldProfile) return
+    setSaving(true)
+    try {
+      const old = review.oldProfile
+      const updated = await updateProfile({
+        name: old.name ?? '',
+        skills: old.skills ?? [],
+        experience_years: old.experience_years ?? 0,
+        experience_by_domain: old.experience_by_domain ?? [],
+        experience_summary: old.experience_summary ?? '',
+      })
+      setProfile(updated)
+      setReview(null)
+    } catch (err) {
+      setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Revert failed' })
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function addReviewSkill() {
+    const s = skillInput.trim()
+    if (!s || !review || review.skills.includes(s)) return
+    setReview({ ...review, skills: [...review.skills, s] })
+    setSkillInput('')
   }
 
   async function handleSavePreferences() {
@@ -99,11 +174,34 @@ export function ProfilePage() {
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <h2 className="text-lg font-semibold text-gray-800">Resume</h2>
 
-        {profile?.active_resume_version_id ? (
+        {profile?.active_resume_version_id && !review && (
           <div className="text-sm text-gray-600">
-            <p className="font-medium text-gray-800">{profile.name ?? 'Name not detected'}</p>
+            <div className="flex items-center justify-between mb-1">
+              <p className="font-medium text-gray-800">{profile.name ?? 'Name not detected'}</p>
+              <button
+                onClick={() => setReview({
+                  name: profile.name ?? '',
+                  skills: profile.skills ?? [],
+                  experience_years: profile.experience_years ?? 0,
+                  experience_by_domain: profile.experience_by_domain ?? [],
+                  experience_summary: profile.experience_summary ?? '',
+                  oldProfile: profile,
+                  isManualEdit: true,
+                })}
+                className="text-xs px-3 py-1 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors"
+              >Edit</button>
+            </div>
             {profile.experience_years != null && (
-              <p>{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} experience</p>
+              <p>{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} experience total</p>
+            )}
+            {profile.experience_by_domain && profile.experience_by_domain.length > 0 && (
+              <ul className="mt-1 space-y-0.5">
+                {profile.experience_by_domain.map(d => (
+                  <li key={d.domain} className="text-xs text-gray-500">
+                    {d.domain}: {d.years} year{d.years !== 1 ? 's' : ''}
+                  </li>
+                ))}
+              </ul>
             )}
             {profile.skills && profile.skills.length > 0 && (
               <div className="flex flex-wrap gap-1 mt-2">
@@ -113,8 +211,160 @@ export function ProfilePage() {
               </div>
             )}
           </div>
-        ) : (
-          <p className="text-sm text-gray-500">No resume uploaded yet.</p>
+        )}
+
+        {/* Review panel */}
+        {review && (
+          <div className="border border-amber-300 bg-amber-50 rounded-lg p-4 space-y-4">
+            <div>
+              <p className="font-semibold text-amber-800 text-sm">{review.isManualEdit ? 'Edit profile data' : 'Review extracted data'}</p>
+              <p className="text-xs text-amber-700 mt-0.5">{review.isManualEdit ? 'Make your changes and save.' : 'Correct anything that looks wrong, then save.'}</p>
+            </div>
+
+            {/* Name */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Name</label>
+              <input
+                type="text"
+                value={review.name}
+                onChange={e => setReview({ ...review, name: e.target.value })}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {review.oldProfile?.name && review.oldProfile.name !== review.name && (
+                <p className="text-xs text-gray-400">Previously: {review.oldProfile.name}</p>
+              )}
+            </div>
+
+            {/* Experience years */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Total years of experience</label>
+              <input
+                type="number"
+                min={0}
+                value={review.experience_years}
+                onChange={e => setReview({ ...review, experience_years: Math.max(0, Number(e.target.value)) })}
+                className="w-24 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              {review.oldProfile?.experience_years != null && review.oldProfile.experience_years !== review.experience_years && (
+                <p className="text-xs text-gray-400">Previously: {review.oldProfile.experience_years}</p>
+              )}
+            </div>
+
+            {/* Domain breakdown (editable) */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-600">Experience breakdown</label>
+              {review.experience_by_domain.map((d, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={d.domain}
+                    onChange={e => {
+                      const updated = [...review.experience_by_domain]
+                      updated[i] = { ...d, domain: e.target.value }
+                      setReview({ ...review, experience_by_domain: updated })
+                    }}
+                    placeholder="Domain"
+                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <input
+                    type="number"
+                    min={0}
+                    value={d.years}
+                    onChange={e => {
+                      const updated = [...review.experience_by_domain]
+                      updated[i] = { ...d, years: Math.max(0, Number(e.target.value)) }
+                      setReview({ ...review, experience_by_domain: updated, experience_years: updated.reduce((s, x) => s + x.years, 0) })
+                    }}
+                    className="w-16 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <span className="text-xs text-gray-500">yrs</span>
+                  <button
+                    onClick={() => {
+                      const updated = review.experience_by_domain.filter((_, j) => j !== i)
+                      setReview({ ...review, experience_by_domain: updated, experience_years: updated.reduce((s, x) => s + x.years, 0) })
+                    }}
+                    className="text-xs text-red-500 hover:text-red-700 font-bold px-1"
+                  >x</button>
+                </div>
+              ))}
+              <button
+                onClick={() => setReview({ ...review, experience_by_domain: [...review.experience_by_domain, { domain: '', years: 0 }] })}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+              >+ Add domain</button>
+              {review.oldProfile?.experience_by_domain && review.oldProfile.experience_by_domain.length > 0 && (
+                <p className="text-xs text-gray-400">
+                  Previously: {review.oldProfile.experience_by_domain.map(d => `${d.domain} (${d.years}y)`).join(', ')}
+                </p>
+              )}
+            </div>
+
+            {/* Skills */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-600">Skills</label>
+              <div className="flex flex-wrap gap-1">
+                {review.skills.map(s => {
+                  const isNew = !review.oldProfile?.skills?.includes(s)
+                  return (
+                    <span
+                      key={s}
+                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${isNew && review.oldProfile?.active_resume_version_id ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}
+                    >
+                      {s}
+                      <button
+                        onClick={() => setReview({ ...review, skills: review.skills.filter(x => x !== s) })}
+                        className="hover:opacity-70 font-bold leading-none"
+                      >x</button>
+                    </span>
+                  )
+                })}
+                {/* Removed skills shown as strikethrough */}
+                {review.oldProfile?.skills?.filter(s => !review.skills.includes(s)).map(s => (
+                  <span key={s} className="inline-flex items-center gap-1 bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full line-through">
+                    {s}
+                    <button
+                      onClick={() => setReview({ ...review, skills: [...review.skills, s] })}
+                      title="Restore"
+                      className="hover:text-gray-600 font-bold leading-none no-underline"
+                    >+</button>
+                  </span>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={skillInput}
+                  onChange={e => setSkillInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && addReviewSkill()}
+                  placeholder="Add skill..."
+                  className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button
+                  onClick={addReviewSkill}
+                  className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium"
+                >Add</button>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex flex-wrap gap-2 pt-1">
+              <button
+                onClick={handleSaveCorrections}
+                disabled={saving}
+                className="text-sm px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50"
+              >
+                {saving ? 'Saving...' : 'Save'}
+              </button>
+              {review.oldProfile?.active_resume_version_id && (
+                <button
+                  onClick={handleRevertReview}
+                  disabled={saving}
+                  className="text-sm px-4 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         <div>
