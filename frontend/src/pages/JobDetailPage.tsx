@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { getJob, saveApplication, rescoreJob, updateJob } from '../lib/api'
+import { getJob, getProfile, saveApplication, rescoreJob, updateJob } from '../lib/api'
 import { CompanyResearchCard } from '../components/CompanyResearchCard'
 
 interface AtsDetails {
@@ -33,6 +33,8 @@ interface Job {
   ats_score: number | null
   ats_details: AtsDetails | null
   url: string | null
+  posted_at: string | null
+  is_recent: boolean
   description_raw: string | null
   created_at: string
 }
@@ -49,6 +51,7 @@ const EFFORT_LABELS: Record<string, string> = { low: 'Low effort', medium: 'Medi
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [job, setJob] = useState<Job | null>(null)
+  const [recentThresholdHours, setRecentThresholdHours] = useState(48)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
@@ -57,11 +60,17 @@ export function JobDetailPage() {
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [savingUrl, setSavingUrl] = useState(false)
+  const [editingDate, setEditingDate] = useState(false)
+  const [dateInput, setDateInput] = useState('')
+  const [savingDate, setSavingDate] = useState(false)
 
   useEffect(() => {
     if (!id) return
-    getJob(id)
-      .then(setJob)
+    Promise.all([getJob(id), getProfile()])
+      .then(([jobData, profile]) => {
+        setJob(jobData)
+        setRecentThresholdHours(profile.recent_threshold_hours ?? 48)
+      })
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
   }, [id])
@@ -95,6 +104,21 @@ export function JobDetailPage() {
     }
   }
 
+  async function handleSaveDate() {
+    if (!job) return
+    setSavingDate(true)
+    try {
+      const updated = await updateJob(job.id, { posted_at: dateInput || null })
+      setJob(updated)
+      setEditingDate(false)
+      setDateInput('')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save date')
+    } finally {
+      setSavingDate(false)
+    }
+  }
+
   async function handleSave() {
     if (!job) return
     setSaving(true)
@@ -124,6 +148,51 @@ export function JobDetailPage() {
           </Link>
           <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
           {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
+          <div className="flex items-center gap-2 mt-1">
+            {job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < recentThresholdHours * 60 * 60 * 1000 && (
+              <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">Recent</span>
+            )}
+            {editingDate ? (
+              <>
+                <input
+                  type="date"
+                  value={dateInput}
+                  onChange={e => setDateInput(e.target.value)}
+                  className="text-xs border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveDate}
+                  disabled={savingDate}
+                  className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {savingDate ? '...' : 'Save'}
+                </button>
+                <button onClick={() => setEditingDate(false)} className="text-xs text-gray-400 hover:text-gray-600">
+                  Cancel
+                </button>
+              </>
+            ) : job.posted_at ? (
+              <>
+                <span className="text-xs text-gray-400">
+                  Posted {new Date(job.posted_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                </span>
+                <button
+                  onClick={() => { setDateInput(job.posted_at!.slice(0, 10)); setEditingDate(true) }}
+                  className="text-xs text-gray-400 hover:text-gray-600"
+                >
+                  Edit
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => { setDateInput(''); setEditingDate(true) }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                + Add posting date
+              </button>
+            )}
+          </div>
           {job.url ? (
             <div className="flex items-center gap-3 mt-1">
               <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
@@ -175,7 +244,7 @@ export function JobDetailPage() {
             disabled={rescoring}
             className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {rescoring ? 'Rescoring...' : 'Re-score'}
+            {rescoring ? 'Rescoring — up to 30s...' : 'Re-score'}
           </button>
           <button
             onClick={handleSave}

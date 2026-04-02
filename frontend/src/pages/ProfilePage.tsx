@@ -38,6 +38,7 @@ interface Profile {
   resume_versions: ResumeVersion[] | null
   display_min_score: number | null
   display_show_skipped: boolean | null
+  recent_threshold_hours: number | null
 }
 
 interface ReviewState {
@@ -66,6 +67,7 @@ export function ProfilePage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [displayMinScore, setDisplayMinScore] = useState(50)
   const [displayShowSkipped, setDisplayShowSkipped] = useState(false)
+  const [recentThresholdHours, setRecentThresholdHours] = useState(48)
   const [prefsSaveStatus, setPrefsSaveStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const weightsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -73,21 +75,23 @@ export function ProfilePage() {
   const displayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedWeightsRef = useRef<ScoreWeights | null>(null)
   const lastSavedBlocklistRef = useRef<string[] | null>(null)
-  const lastSavedDisplayRef = useRef<{ min_score: number; show_skipped: boolean } | null>(null)
+  const lastSavedDisplayRef = useRef<{ min_score: number; show_skipped: boolean; recent_threshold_hours: number } | null>(null)
 
   useEffect(() => {
     getProfile()
       .then((p: Profile) => {
         const minScore = p.display_min_score ?? 50
         const showSkipped = p.display_show_skipped ?? false
+        const recentThreshold = p.recent_threshold_hours ?? 48
         lastSavedWeightsRef.current = p.score_weights ?? DEFAULT_WEIGHTS
         lastSavedBlocklistRef.current = p.blocklist_words ?? []
-        lastSavedDisplayRef.current = { min_score: minScore, show_skipped: showSkipped }
+        lastSavedDisplayRef.current = { min_score: minScore, show_skipped: showSkipped, recent_threshold_hours: recentThreshold }
         setProfile(p)
         setWeights(p.score_weights ?? DEFAULT_WEIGHTS)
         setBlocklist(p.blocklist_words ?? [])
         setDisplayMinScore(minScore)
         setDisplayShowSkipped(showSkipped)
+        setRecentThresholdHours(recentThreshold)
       })
       .catch(() => {})
   }, [])
@@ -128,18 +132,18 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (lastSavedDisplayRef.current === null) return
-    const current = { min_score: displayMinScore, show_skipped: displayShowSkipped }
+    const current = { min_score: displayMinScore, show_skipped: displayShowSkipped, recent_threshold_hours: recentThresholdHours }
     if (JSON.stringify(current) === JSON.stringify(lastSavedDisplayRef.current)) return
     if (displayTimerRef.current) clearTimeout(displayTimerRef.current)
     displayTimerRef.current = setTimeout(async () => {
       try {
-        await updateProfile({ display_min_score: displayMinScore, display_show_skipped: displayShowSkipped })
+        await updateProfile({ display_min_score: displayMinScore, display_show_skipped: displayShowSkipped, recent_threshold_hours: recentThresholdHours })
         lastSavedDisplayRef.current = current
       } catch { /* silent */ }
     }, 500)
     return () => { if (displayTimerRef.current) clearTimeout(displayTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayMinScore, displayShowSkipped])
+  }, [displayMinScore, displayShowSkipped, recentThresholdHours])
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -636,6 +640,24 @@ export function ProfilePage() {
             <p className="text-xs text-gray-400">Hidden by default. Enable to see jobs the AI flagged as not a good fit.</p>
           </div>
         </label>
+
+        <div className="space-y-1">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-700">Recent badge threshold</span>
+            <span className="font-mono text-gray-600">{recentThresholdHours}h</span>
+          </div>
+          <select
+            value={recentThresholdHours}
+            onChange={e => setRecentThresholdHours(Number(e.target.value))}
+            className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value={24}>24h — within the last day</option>
+            <option value={48}>48h — within the last 2 days (recommended)</option>
+            <option value={72}>72h — within the last 3 days</option>
+            <option value={168}>7 days — within the last week</option>
+          </select>
+          <p className="text-xs text-gray-400">Jobs posted within this window show a "Recent" badge. Applying early significantly improves reply rates.</p>
+        </div>
       </section>
 
     </div>

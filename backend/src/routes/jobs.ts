@@ -51,6 +51,7 @@ const PasteImportSchema = z.object({
   title: z.string().max(200).optional(),
   company: z.string().max(200).optional(),
   url: z.string().url().optional(),
+  posted_at: z.string().optional(),
 })
 
 // POST /jobs/import/url — scrape a job URL, fall back if it fails
@@ -81,12 +82,15 @@ router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: R
   const parsed = PasteImportSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() })
 
-  const { description, title: titleInput, company: companyInput, url: urlInput } = parsed.data
+  const { description, title: titleInput, company: companyInput, url: urlInput, posted_at: postedAtInput } = parsed.data
 
   // Extract title from first non-empty line if not provided
   const lines = description.trim().split('\n').map(l => l.trim()).filter(Boolean)
   const title = titleInput ?? lines[0]?.slice(0, 200) ?? 'Pasted Job'
   const company = companyInput ?? null
+
+  const postedAt = postedAtInput ? new Date(postedAtInput) : null
+  const isRecent = postedAt ? (Date.now() - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
 
   // Insert job row
   const { data: job, error: insertError } = await supabase
@@ -98,6 +102,8 @@ router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: R
       description_raw: description,
       url: urlInput ?? null,
       source: urlInput ? 'url_fetch' : 'paste',
+      posted_at: postedAt?.toISOString() ?? null,
+      is_recent: isRecent,
       scoring_status: 'pending',
     })
     .select()
@@ -141,7 +147,9 @@ router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res
 
   if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: remotiveJobs.length })
 
-  let imported = 0, failed = 0, filtered = 0
+  let insertedCount = 0, failed = 0, filtered = 0
+  const jobIdsToScore: string[] = []
+  const userId = req.user!.id
 
   for (const rj of toImport) {
     const description = rj.description
@@ -156,7 +164,7 @@ router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res
     const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
 
     const { data: job, error: insertError } = await supabase.from('jobs').insert({
-      user_id: req.user!.id,
+      user_id: userId,
       title: (rj.title ?? 'Remote Job').slice(0, 200),
       company: rj.company_name?.slice(0, 200) ?? null,
       description_raw: description,
@@ -168,16 +176,16 @@ router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res
     }).select().single()
 
     if (insertError || !job) { failed++; continue }
-
-    try {
-      await scoreJob(job.id, req.user!.id)
-      imported++
-    } catch {
-      failed++
-    }
+    jobIdsToScore.push(job.id)
+    insertedCount++
   }
 
-  return res.json({ imported, failed, filtered, already_imported, remaining, total: remotiveJobs.length })
+  // Respond immediately — scoring runs in the background after the response
+  res.json({ imported: insertedCount, failed, filtered, already_imported, remaining, total: remotiveJobs.length })
+
+  for (const jobId of jobIdsToScore) {
+    try { await scoreJob(jobId, userId) } catch { /* already marked failed in scoreJob */ }
+  }
 })
 
 // POST /jobs/import/adzuna — fetch Tokyo software jobs from Adzuna, deduplicate, score new ones
@@ -282,7 +290,9 @@ router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res
 
   if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: rawJobs.length })
 
-  let imported = 0, failed = 0, filtered = 0
+  let insertedCount = 0, failed = 0, filtered = 0
+  const jobIdsToScore: string[] = []
+  const userId = req.user!.id
 
   for (const rj of toImport) {
     const description = rj.description
@@ -297,7 +307,7 @@ router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res
     const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
 
     const { data: job, error: insertError } = await supabase.from('jobs').insert({
-      user_id: req.user!.id,
+      user_id: userId,
       title: (rj.position ?? 'Remote Job').slice(0, 200),
       company: rj.company?.slice(0, 200) ?? null,
       description_raw: description,
@@ -311,23 +321,23 @@ router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res
     }).select().single()
 
     if (insertError || !job) { failed++; continue }
-
-    try {
-      await scoreJob(job.id, req.user!.id)
-      imported++
-    } catch {
-      failed++
-    }
+    jobIdsToScore.push(job.id)
+    insertedCount++
   }
 
-  return res.json({ imported, failed, filtered, already_imported, remaining, total: rawJobs.length })
+  // Respond immediately — scoring runs in the background after the response
+  res.json({ imported: insertedCount, failed, filtered, already_imported, remaining, total: rawJobs.length })
+
+  for (const jobId of jobIdsToScore) {
+    try { await scoreJob(jobId, userId) } catch { /* already marked failed in scoreJob */ }
+  }
 })
 
 // GET /jobs — list user's jobs, most recent first
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, created_at')
+    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, posted_at, created_at')
     .eq('user_id', req.user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -349,16 +359,33 @@ router.get('/:id', requireAuth, async (req: Request, res: Response) => {
   return res.json(data)
 })
 
-// PATCH /jobs/:id — update mutable fields (currently: url)
+// PATCH /jobs/:id — update mutable fields: url, posted_at
 router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
-  const { url } = req.body
+  const { url, posted_at } = req.body
   if (url !== undefined && (typeof url !== 'string' || !url)) {
     return res.status(400).json({ error: 'url must be a non-empty string' })
+  }
+  if (posted_at !== undefined && posted_at !== null && typeof posted_at !== 'string') {
+    return res.status(400).json({ error: 'posted_at must be a date string or null' })
+  }
+
+  const updates: Record<string, unknown> = {}
+  if (url !== undefined) updates.url = url
+  if (posted_at !== undefined) {
+    if (posted_at === null) {
+      updates.posted_at = null
+      updates.is_recent = false
+    } else {
+      const d = new Date(posted_at)
+      if (isNaN(d.getTime())) return res.status(400).json({ error: 'Invalid posted_at date' })
+      updates.posted_at = d.toISOString()
+      updates.is_recent = (Date.now() - d.getTime()) < 24 * 60 * 60 * 1000
+    }
   }
 
   const { data, error } = await supabase
     .from('jobs')
-    .update({ url })
+    .update(updates)
     .eq('id', req.params.id)
     .eq('user_id', req.user!.id)
     .select()

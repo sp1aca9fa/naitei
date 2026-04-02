@@ -1,4 +1,4 @@
-export const SCORE_JOB_SYSTEM = `You are a job matching assistant for a junior web developer in Tokyo. Return ONLY valid JSON with no markdown or preamble.`
+export const SCORE_JOB_SYSTEM = `You are a job fit analyst. Evaluate how well a candidate matches a job based on their profile. Return ONLY valid JSON with no markdown or preamble. Always refer to the candidate in second person ("you", "your") — never use their name.`
 
 interface ScoreJobParams {
   resumeText: string

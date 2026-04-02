@@ -76,10 +76,10 @@ export async function importUrlJob(url: string) {
     body: JSON.stringify({ url }),
   })
   if (!res.ok) throw new Error(await res.text())
-  return res.json() as Promise<{ description?: string; title?: string; company?: string; fallback?: boolean; reason?: string }>
+  return res.json() as Promise<{ description?: string; title?: string; company?: string; postedAt?: string; fallback?: boolean; reason?: string }>
 }
 
-export async function updateJob(id: string, body: { url?: string }) {
+export async function updateJob(id: string, body: { url?: string; posted_at?: string | null }) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/${id}`, {
     method: 'PATCH',
@@ -90,7 +90,7 @@ export async function updateJob(id: string, body: { url?: string }) {
   return res.json()
 }
 
-export async function importPasteJob(body: { description: string; title?: string; company?: string; url?: string }) {
+export async function importPasteJob(body: { description: string; title?: string; company?: string; url?: string; posted_at?: string }) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/paste`, {
     method: 'POST',

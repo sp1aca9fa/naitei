@@ -85,10 +85,11 @@ router.post('/research', requireAuth, aiLimiter, async (req: Request, res: Respo
     return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
   }
 
-  // Save to DB for future lookups
+  // Save to DB for future lookups — use the input normalized name so lookups always match,
+  // regardless of how the AI capitalizes or formats the company name in its response.
   const { error: saveError } = await supabase.from('companies').insert({
     name: validation.data.company_name,
-    name_normalized: validation.data.company_name.toLowerCase().trim(),
+    name_normalized: normalized,
     research: validation.data,
   })
   if (saveError) console.error('[POST /company/research] Failed to save to DB:', saveError.message)

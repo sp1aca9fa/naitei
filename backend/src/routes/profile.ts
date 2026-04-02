@@ -49,6 +49,7 @@ const UpdateProfileSchema = z.object({
   active_resume_version_id: z.string().uuid().optional(),
   display_min_score: z.number().int().min(0).max(100).optional(),
   display_show_skipped: z.boolean().optional(),
+  recent_threshold_hours: z.number().int().min(1).max(720).optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {

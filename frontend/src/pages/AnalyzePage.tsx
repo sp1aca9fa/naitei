@@ -12,6 +12,7 @@ export function AnalyzePage() {
   const [description, setDescription] = useState('')
   const [title, setTitle] = useState('')
   const [company, setCompany] = useState('')
+  const [postedDate, setPostedDate] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [skipped, setSkipped] = useState<string | null>(null)
@@ -29,6 +30,7 @@ export function AnalyzePage() {
     setTitle('')
     setCompany('')
     setDescription('')
+    setPostedDate('')
     try {
       const data = await importUrlJob(value.trim())
       if (data.fallback) {
@@ -41,6 +43,7 @@ export function AnalyzePage() {
         if (data.description) setDescription(data.description)
         if (data.title) setTitle(data.title)
         if (data.company) setCompany(data.company)
+        if (data.postedAt) setPostedDate(data.postedAt.slice(0, 10))
         setFetchWarning("Auto-filled from URL — review and correct the fields below before analyzing.")
       }
     } catch (err) {
@@ -62,6 +65,7 @@ export function AnalyzePage() {
         title: title.trim() || undefined,
         company: company.trim() || undefined,
         url: url.trim() || undefined,
+        posted_at: postedDate.trim() || undefined,
       })
       if (data.skipped) {
         setSkipped(data.error ?? 'Job matched a blocklist word and was skipped.')
@@ -124,6 +128,15 @@ export function AnalyzePage() {
               className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Posted on (optional — helps gauge recency)</label>
+            <input
+              type="date"
+              value={postedDate}
+              onChange={e => setPostedDate(e.target.value)}
+              className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
           <textarea
             placeholder="Paste the full job description here..."
             value={description}
@@ -135,7 +148,7 @@ export function AnalyzePage() {
             disabled={loading || !hasSkills || description.trim().length < 50}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed self-start"
           >
-            {loading ? 'Analyzing...' : 'Analyze Job'}
+            {loading ? 'Analyzing — this may take up to 30s...' : 'Analyze Job'}
           </button>
         </form>
       </div>

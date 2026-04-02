@@ -5,6 +5,7 @@ interface ScrapeResult {
   description: string
   title?: string
   company?: string
+  postedAt?: Date
 }
 
 const DESCRIPTION_SELECTORS = [
@@ -148,5 +149,12 @@ export async function scrapeJobUrl(url: string): Promise<ScrapeResult> {
     company = String(company).slice(0, 200)
   }
 
-  return { description, title, company }
+  // Extract datePosted from JSON-LD
+  let postedAt: Date | undefined
+  if (jsonLd?.datePosted && typeof jsonLd.datePosted === 'string') {
+    const d = new Date(jsonLd.datePosted)
+    if (!isNaN(d.getTime())) postedAt = d
+  }
+
+  return { description, title, company, postedAt }
 }

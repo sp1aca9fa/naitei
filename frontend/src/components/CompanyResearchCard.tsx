@@ -164,7 +164,14 @@ export function CompanyResearchCard({ companyName: initialCompany }: { companyNa
         </button>
       </form>}
 
-      {generating && <p className="text-sm text-gray-400 mb-4">Loading...</p>}
+      {generating && (
+        <div className="mb-4 space-y-1">
+          <p className="text-sm text-gray-500">Researching company — this may take up to 30 seconds...</p>
+          <div className="w-full h-1 bg-gray-100 rounded overflow-hidden">
+            <div className="h-1 bg-blue-400 rounded animate-pulse w-2/3" />
+          </div>
+        </div>
+      )}
       {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
 
       {notFound && (
