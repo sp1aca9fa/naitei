@@ -46,8 +46,11 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
   const ai = getAIProvider()
   let aiRaw: string
   try {
+    if (!profile.experience_summary) throw new Error('No resume summary found. Please upload a CV first.')
+    const resumeText = profile.experience_summary
+
     aiRaw = await ai.complete(SCORE_JOB_SYSTEM, scoreJobPrompt({
-      resumeText: profile.raw_resume_text ?? profile.experience_summary ?? '',
+      resumeText,
       preferredLanguageEnv: profile.preferred_language_env ?? 'any',
       locationArea: profile.location_area ?? '',
       workStyle: Array.isArray(profile.work_style) ? profile.work_style.join(', ') : '',

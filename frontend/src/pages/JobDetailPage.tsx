@@ -34,6 +34,7 @@ interface Job {
   ats_details: AtsDetails | null
   url: string | null
   posted_at: string | null
+  scored_at: string | null
   is_recent: boolean
   description_raw: string | null
   created_at: string
@@ -48,15 +49,29 @@ const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = 
 
 const EFFORT_LABELS: Record<string, string> = { low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
 
+const RESCORE_DELAY_MS = parseFloat(import.meta.env.VITE_RESCORE_DELAY_HOURS ?? '24') * 3600 * 1000
+
+function rescoreAvailableAt(scoredAt: string | null): Date | null {
+  if (!scoredAt || RESCORE_DELAY_MS <= 0) return null
+  const available = new Date(new Date(scoredAt).getTime() + RESCORE_DELAY_MS)
+  return available > new Date() ? available : null
+}
+
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>()
   const [job, setJob] = useState<Job | null>(null)
   const [recentThresholdHours, setRecentThresholdHours] = useState(48)
+  const [companyCredits, setCompanyCredits] = useState(0)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [rescoring, setRescoring] = useState(false)
+  const [rescoreCooldown, setRescoreCooldown] = useState(() => {
+    if (!id) return false
+    const ts = parseInt(sessionStorage.getItem(`rescore_cooldown_${id}`) ?? '0')
+    return Date.now() - ts < 60_000
+  })
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [savingUrl, setSavingUrl] = useState(false)
@@ -70,6 +85,7 @@ export function JobDetailPage() {
       .then(([jobData, profile]) => {
         setJob(jobData)
         setRecentThresholdHours(profile.recent_threshold_hours ?? 48)
+        setCompanyCredits(profile.company_research_credits ?? 0)
       })
       .catch(err => setError(err instanceof Error ? err.message : 'Failed to load job'))
       .finally(() => setLoading(false))
@@ -78,14 +94,24 @@ export function JobDetailPage() {
   async function handleRescore() {
     if (!job) return
     setRescoring(true)
+    setRescoreCooldown(true)
+    sessionStorage.setItem(`rescore_cooldown_${job.id}`, String(Date.now()))
     setError(null)
     try {
       const data = await rescoreJob(job.id)
       setJob(data.job)
+      if (data.error) {
+        const isTemporary = /overload|high demand|temporary|capacity/i.test(data.error)
+        setError(isTemporary ? 'Scoring failed due to high AI demand. Try again in a few minutes.' : `Scoring failed: ${data.error}`)
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rescore failed')
     } finally {
       setRescoring(false)
+      setTimeout(() => {
+        setRescoreCooldown(false)
+        if (job) sessionStorage.removeItem(`rescore_cooldown_${job.id}`)
+      }, 60_000)
     }
   }
 
@@ -133,13 +159,14 @@ export function JobDetailPage() {
   }
 
   if (loading) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-gray-400">Loading...</p></main>
-  if (error || !job) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-red-500">{error ?? 'Job not found'}</p></main>
+  if (!job) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-red-500">{error ?? 'Job not found'}</p></main>
 
   const rec = job.ai_recommendation ? RECOMMENDATION_LABELS[job.ai_recommendation] : null
   const breakdown = job.ai_score_breakdown ?? {}
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-12 space-y-5">
+      {error && <p className="text-sm text-red-500">{error}</p>}
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
@@ -239,13 +266,27 @@ export function JobDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          <button
-            onClick={handleRescore}
-            disabled={rescoring}
-            className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {rescoring ? 'Rescoring — up to 30s...' : 'Re-score'}
-          </button>
+          {(() => {
+            const delayedUntil = rescoreAvailableAt(job.scored_at ?? null)
+            const blocked = rescoring || rescoreCooldown || !!delayedUntil || job.scoring_status === 'pending'
+            const title = job.scoring_status === 'pending'
+              ? 'Scoring in progress'
+              : rescoreCooldown && !rescoring
+              ? 'Re-score recently triggered — wait a moment'
+              : delayedUntil
+              ? `Re-score available at ${delayedUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              : undefined
+            return (
+              <button
+                onClick={handleRescore}
+                disabled={blocked}
+                title={title}
+                className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {rescoring ? 'Rescoring — up to 30s...' : delayedUntil ? `Re-score (${delayedUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : 'Re-score'}
+              </button>
+            )
+          })()}
           <button
             onClick={handleSave}
             disabled={saving || saved}
@@ -264,7 +305,7 @@ export function JobDetailPage() {
 
       {job.scoring_status === 'failed' && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-          Scoring failed for this job.
+          Scoring failed. This can happen during high AI demand — try rescoring in a few minutes.
         </div>
       )}
 
@@ -394,7 +435,7 @@ export function JobDetailPage() {
         </div>
       )}
 
-      {job.company && <CompanyResearchCard companyName={job.company} />}
+      {job.company && <CompanyResearchCard companyName={job.company} credits={companyCredits} />}
     </main>
   )
 }

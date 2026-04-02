@@ -43,9 +43,14 @@ class OpenAIProvider implements AIProvider {
 class GeminiProvider implements AIProvider {
   name = 'gemini'
   private client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY ?? '')
+  private modelName: string
+
+  constructor(modelName = 'gemini-2.5-flash') {
+    this.modelName = modelName
+  }
 
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
-    const model = this.client.getGenerativeModel({ model: 'gemini-2.5-flash' })
+    const model = this.client.getGenerativeModel({ model: this.modelName })
     try {
       const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
       const candidate = result.response.candidates?.[0]
@@ -219,6 +224,14 @@ export function getAIProvider(): AIProvider {
     case 'mock':   return new MockProvider()
     default:       return new ClaudeProvider()
   }
+}
+
+// Cheaper provider for low-stakes tasks like company research
+export function getCompanyAIProvider(): AIProvider {
+  if (process.env.AI_PROVIDER === 'gemini' && process.env.COMPANY_AI_MODEL) {
+    return new GeminiProvider(process.env.COMPANY_AI_MODEL)
+  }
+  return getAIProvider()
 }
 
 export function getAIProviders(): AIProvider[] {

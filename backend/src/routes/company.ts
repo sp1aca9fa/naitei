@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express'
 import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
-import { aiLimiter } from '../middleware/rateLimiter'
-import { getAIProvider, MOCK_COMPANY_RESEARCH } from '../services/ai/provider'
+import { companyLimiter } from '../middleware/rateLimiter'
+import { getCompanyAIProvider, MOCK_COMPANY_RESEARCH } from '../services/ai/provider'
 import { CompanyResearchSchema } from '../services/ai/schemas'
 import { COMPANY_RESEARCH_SYSTEM, companyResearchPrompt } from '../prompts/company-research'
 import { parseAIJson } from '../services/ai/parseJson'
@@ -38,7 +38,7 @@ const ResearchRequestSchema = z.object({
 })
 
 // POST /company/research — DB-first, AI fallback, saves result to DB
-router.post('/research', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+router.post('/research', requireAuth, companyLimiter, async (req: Request, res: Response) => {
   const parsed = ResearchRequestSchema.safeParse(req.body)
   if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() })
 
@@ -52,7 +52,7 @@ router.post('/research', requireAuth, aiLimiter, async (req: Request, res: Respo
     return res.json(MOCK_COMPANY_RESEARCH[key])
   }
 
-  // DB-first lookup
+  // DB-first lookup — no credit needed for cached results
   const { data: existing } = await supabase
     .from('companies')
     .select('research')
@@ -61,8 +61,23 @@ router.post('/research', requireAuth, aiLimiter, async (req: Request, res: Respo
 
   if (existing) return res.json(existing.research)
 
-  // Not in DB — generate with AI
-  const ai = getAIProvider()
+  // Not in DB — check credits before calling AI
+  const { data: profileData } = await supabase
+    .from('profiles')
+    .select('company_research_credits')
+    .eq('user_id', req.user!.id)
+    .single()
+
+  const credits: number = profileData?.company_research_credits ?? 0
+  if (credits <= 0) {
+    return res.status(402).json({ error: 'no_credits', credits: 0 })
+  }
+
+  // Deduct credit before calling AI (prevents abuse even if AI fails)
+  await supabase.from('profiles').update({ company_research_credits: credits - 1 }).eq('user_id', req.user!.id)
+
+  // Generate with AI using the cheaper company research model
+  const ai = getCompanyAIProvider()
   let aiRaw: string
   try {
     aiRaw = await ai.complete(COMPANY_RESEARCH_SYSTEM, companyResearchPrompt(company_name, job_title))
@@ -85,13 +100,12 @@ router.post('/research', requireAuth, aiLimiter, async (req: Request, res: Respo
     return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
   }
 
-  // Save to DB for future lookups — use the input normalized name so lookups always match,
-  // regardless of how the AI capitalizes or formats the company name in its response.
-  const { error: saveError } = await supabase.from('companies').insert({
-    name: validation.data.company_name,
-    name_normalized: normalized,
-    research: validation.data,
-  })
+  // Save to DB for future lookups — upsert so concurrent requests for the same company don't
+  // cause a duplicate key error (both may pass the DB-first check before either inserts).
+  const { error: saveError } = await supabase.from('companies').upsert(
+    { name: validation.data.company_name, name_normalized: normalized, research: validation.data },
+    { onConflict: 'name_normalized', ignoreDuplicates: true }
+  )
   if (saveError) console.error('[POST /company/research] Failed to save to DB:', saveError.message)
 
   return res.json(validation.data)

@@ -3,7 +3,7 @@ import { z } from 'zod'
 import axios from 'axios'
 import * as cheerio from 'cheerio'
 import { requireAuth } from '../middleware/auth'
-import { aiLimiter } from '../middleware/rateLimiter'
+import { aiLimiter, importLimiter } from '../middleware/rateLimiter'
 import { supabase } from '../lib/supabase'
 import { scoreJob } from '../services/scoreJob'
 import { scrapeJobUrl } from '../services/scrapeJobUrl'
@@ -123,7 +123,7 @@ router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: R
 })
 
 // POST /jobs/import/remotive — fetch software-dev jobs from Remotive, deduplicate, score new ones
-router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+router.post('/import/remotive', requireAuth, importLimiter, async (req: Request, res: Response) => {
   const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
   const userSkills: string[] = profileData?.skills ?? []
   if (userSkills.length === 0) return res.status(400).json({ error: 'Add your skills to your profile before importing jobs.' })
@@ -142,27 +142,56 @@ router.post('/import/remotive', requireAuth, aiLimiter, async (req: Request, res
   const now = Date.now()
   const trulyNew = remotiveJobs.filter(j => j.url && !existingUrls.has(j.url))
   const already_imported = remotiveJobs.length - trulyNew.length
-  const toImport = trulyNew.slice(0, 20)
-  const remaining = trulyNew.length - toImport.length
 
-  if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: remotiveJobs.length })
+  if (trulyNew.length === 0) return res.json({ imported: 0, failed: 0, filtered: 0, already_imported, remaining: 0, total: remotiveJobs.length })
 
-  let insertedCount = 0, failed = 0, filtered = 0
-  const jobIdsToScore: string[] = []
+  // Pre-filter all truly new jobs before batching so remaining reflects real availability
+  let failed = 0
+  const skillMatched: { rj: RemotiveJob; description: string; postedAt: Date | null; isRecent: boolean }[] = []
+  const noSkillMatch: { rj: RemotiveJob; description: string; postedAt: Date | null; isRecent: boolean }[] = []
   const userId = req.user!.id
 
-  for (const rj of toImport) {
+  for (const rj of trulyNew) {
     const description = rj.description
       ? cheerio.load(rj.description).text().replace(/\s+/g, ' ').trim().slice(0, 8000)
       : ''
     if (description.length < 50) { failed++; continue }
-
-    const descLower = description.toLowerCase()
-    if (!userSkills.some(s => descLower.includes(s.toLowerCase()))) { filtered++; continue }
-
     const postedAt = rj.publication_date ? new Date(rj.publication_date) : null
     const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
+    const descLower = description.toLowerCase()
+    if (userSkills.some(s => descLower.includes(s.toLowerCase()))) {
+      skillMatched.push({ rj, description, postedAt, isRecent })
+    } else {
+      noSkillMatch.push({ rj, description, postedAt, isRecent })
+    }
+  }
 
+  // Insert no-match jobs as skipped so they're deduplicated on the next call
+  if (noSkillMatch.length > 0) {
+    await supabase.from('jobs').upsert(
+      noSkillMatch.map(({ rj, description, postedAt, isRecent }) => ({
+        user_id: userId,
+        title: (rj.title ?? 'Remote Job').slice(0, 200),
+        company: rj.company_name?.slice(0, 200) ?? null,
+        description_raw: description,
+        url: rj.url,
+        source: 'remotive',
+        posted_at: postedAt?.toISOString() ?? null,
+        is_recent: isRecent,
+        scoring_status: 'skipped',
+      })),
+      { onConflict: 'user_id,url', ignoreDuplicates: true }
+    )
+  }
+
+  const toImport = skillMatched.slice(0, 20)
+  const remaining = skillMatched.length - toImport.length
+  const filtered = noSkillMatch.length
+
+  let insertedCount = 0
+  const jobIdsToScore: string[] = []
+
+  for (const { rj, description, postedAt, isRecent } of toImport) {
     const { data: job, error: insertError } = await supabase.from('jobs').insert({
       user_id: userId,
       title: (rj.title ?? 'Remote Job').slice(0, 200),
@@ -263,7 +292,7 @@ router.post('/import/adzuna', requireAuth, aiLimiter, async (req: Request, res: 
 })
 
 // POST /jobs/import/remoteok — fetch remote dev jobs from RemoteOK, deduplicate, score new ones
-router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+router.post('/import/remoteok', requireAuth, importLimiter, async (req: Request, res: Response) => {
   const { data: profileData } = await supabase.from('profiles').select('skills').eq('user_id', req.user!.id).single()
   const userSkills: string[] = profileData?.skills ?? []
   if (userSkills.length === 0) return res.status(400).json({ error: 'Add your skills to your profile before importing jobs.' })
@@ -285,27 +314,58 @@ router.post('/import/remoteok', requireAuth, aiLimiter, async (req: Request, res
   const now = Date.now()
   const trulyNewRok = rawJobs.filter(j => j.url && !existingUrls.has(j.url))
   const already_imported = rawJobs.length - trulyNewRok.length
-  const toImport = trulyNewRok.slice(0, 20)
-  const remaining = trulyNewRok.length - toImport.length
 
-  if (toImport.length === 0) return res.json({ imported: 0, filtered: 0, already_imported, remaining: 0, total: rawJobs.length })
+  if (trulyNewRok.length === 0) return res.json({ imported: 0, failed: 0, filtered: 0, already_imported, remaining: 0, total: rawJobs.length })
 
-  let insertedCount = 0, failed = 0, filtered = 0
-  const jobIdsToScore: string[] = []
+  // Pre-filter all truly new jobs before batching so remaining reflects real availability
+  let failed = 0
+  const skillMatched: { rj: RemoteOkJob; description: string; postedAt: Date | null; isRecent: boolean }[] = []
+  const noSkillMatch: { rj: RemoteOkJob; description: string; postedAt: Date | null; isRecent: boolean }[] = []
   const userId = req.user!.id
 
-  for (const rj of toImport) {
+  for (const rj of trulyNewRok) {
     const description = rj.description
       ? cheerio.load(rj.description).text().replace(/\s+/g, ' ').trim().slice(0, 8000)
       : ''
     if (description.length < 50) { failed++; continue }
-
-    const descLower = description.toLowerCase()
-    if (!userSkills.some(s => descLower.includes(s.toLowerCase()))) { filtered++; continue }
-
     const postedAt = rj.date ? new Date(rj.date) : null
     const isRecent = postedAt ? (now - postedAt.getTime()) < 24 * 60 * 60 * 1000 : false
+    const descLower = description.toLowerCase()
+    if (userSkills.some(s => descLower.includes(s.toLowerCase()))) {
+      skillMatched.push({ rj, description, postedAt, isRecent })
+    } else {
+      noSkillMatch.push({ rj, description, postedAt, isRecent })
+    }
+  }
 
+  // Insert no-match jobs as skipped so they're deduplicated on the next call
+  if (noSkillMatch.length > 0) {
+    await supabase.from('jobs').upsert(
+      noSkillMatch.map(({ rj, description, postedAt, isRecent }) => ({
+        user_id: userId,
+        title: (rj.position ?? 'Remote Job').slice(0, 200),
+        company: rj.company?.slice(0, 200) ?? null,
+        description_raw: description,
+        url: rj.url,
+        source: 'remoteok',
+        posted_at: postedAt?.toISOString() ?? null,
+        is_recent: isRecent,
+        salary_min: rj.salary_min ?? null,
+        salary_max: rj.salary_max ?? null,
+        scoring_status: 'skipped',
+      })),
+      { onConflict: 'user_id,url', ignoreDuplicates: true }
+    )
+  }
+
+  const toImport = skillMatched.slice(0, 20)
+  const remaining = skillMatched.length - toImport.length
+  const filtered = noSkillMatch.length
+
+  let insertedCount = 0
+  const jobIdsToScore: string[] = []
+
+  for (const { rj, description, postedAt, isRecent } of toImport) {
     const { data: job, error: insertError } = await supabase.from('jobs').insert({
       user_id: userId,
       title: (rj.position ?? 'Remote Job').slice(0, 200),
@@ -400,12 +460,29 @@ router.post('/:id/rescore', requireAuth, aiLimiter, async (req: Request, res: Re
   // Verify job belongs to user
   const { data: job, error: fetchError } = await supabase
     .from('jobs')
-    .select('id')
+    .select('id, scored_at, scoring_status')
     .eq('id', req.params.id)
     .eq('user_id', req.user!.id)
     .single()
 
   if (fetchError || !job) return res.status(404).json({ error: 'Job not found' })
+
+  // Block rescore while already in progress
+  if (job.scoring_status === 'pending') {
+    return res.status(409).json({ error: 'Job is currently being scored. Wait for it to finish.' })
+  }
+
+  // Enforce rescore delay
+  const delayHours = parseFloat(process.env.RESCORE_DELAY_HOURS ?? '24')
+  if (job.scored_at && delayHours > 0) {
+    const availableAt = new Date(new Date(job.scored_at).getTime() + delayHours * 3600 * 1000)
+    if (availableAt > new Date()) {
+      return res.status(429).json({
+        error: `Re-score not available yet. Available at ${availableAt.toISOString()}.`,
+        available_at: availableAt.toISOString(),
+      })
+    }
+  }
 
   // Reset status
   await supabase.from('jobs').update({ scoring_status: 'pending' }).eq('id', req.params.id)

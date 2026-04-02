@@ -8,10 +8,25 @@ async function authHeaders(): Promise<Record<string, string>> {
   return token ? { Authorization: `Bearer ${token}` } : {}
 }
 
+async function throwError(res: Response): Promise<never> {
+  if (res.status === 429) {
+    const resetHeader = res.headers.get('RateLimit-Reset')
+    const resetTime = resetHeader
+      ? new Date(parseInt(resetHeader) * 1000).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      : null
+    throw new Error(resetTime ? `Rate limit reached. Try again after ${resetTime}.` : 'Rate limit reached. Try again later.')
+  }
+  const text = await res.text()
+  try { throw new Error(JSON.parse(text).error ?? text) } catch (e) {
+    if (e instanceof Error && e.message !== text) throw e
+    throw new Error(text)
+  }
+}
+
 export async function getProfile() {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/profile`, { headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -22,7 +37,7 @@ export async function updateProfile(body: Record<string, unknown>) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -36,7 +51,7 @@ export async function uploadResume(file: File, label?: string) {
     headers,
     body: form,
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -47,7 +62,7 @@ export async function previewResumeVersion(versionId: string) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ version_id: versionId }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -57,14 +72,14 @@ export async function deleteResumeVersion(versionId: string) {
     method: 'DELETE',
     headers,
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function searchCompanies(q: string): Promise<{ id: string; name: string; research: unknown }[]> {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/company/search?q=${encodeURIComponent(q)}`, { headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -75,7 +90,7 @@ export async function importUrlJob(url: string) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ url }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json() as Promise<{ description?: string; title?: string; company?: string; postedAt?: string; fallback?: boolean; reason?: string }>
 }
 
@@ -86,7 +101,7 @@ export async function updateJob(id: string, body: { url?: string; posted_at?: st
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -97,56 +112,56 @@ export async function importPasteJob(body: { description: string; title?: string
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function importAdzuna(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/adzuna`, { method: 'POST', headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function importRemotive(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/remotive`, { method: 'POST', headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function importRemoteOk(): Promise<{ imported: number; failed?: number; filtered?: number; already_imported: number; remaining: number; total: number }> {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/import/remoteok`, { method: 'POST', headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function getJobs() {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs`, { headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function deleteJob(id: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/${id}`, { method: 'DELETE', headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function getJob(id: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/${id}`, { headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
 export async function rescoreJob(id: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/jobs/${id}/rescore`, { method: 'POST', headers })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -157,7 +172,7 @@ export async function saveApplication(jobId: string) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ job_id: jobId }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }
 
@@ -168,6 +183,6 @@ export async function researchCompany(companyName: string, jobTitle?: string) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ company_name: companyName, job_title: jobTitle }),
   })
-  if (!res.ok) throw new Error(await res.text())
+  if (!res.ok) await throwError(res)
   return res.json()
 }

@@ -60,6 +60,12 @@ export function MyJobsPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [importing, setImporting] = useState<'remotive' | 'adzuna' | 'remoteok' | null>(null)
   const [importResult, setImportResult] = useState<string | null>(null)
+  const [importCooldown, setImportCooldown] = useState<{ remotive: boolean; remoteok: boolean }>(() => {
+    const now = Date.now()
+    const rok = parseInt(sessionStorage.getItem('import_cooldown_remoteok') ?? '0')
+    const rem = parseInt(sessionStorage.getItem('import_cooldown_remotive') ?? '0')
+    return { remoteok: now - rok < 90_000, remotive: now - rem < 90_000 }
+  })
 
   // Inline filters (session only)
   const [filterSource, setFilterSource] = useState<string | null>(null)
@@ -82,14 +88,24 @@ export function MyJobsPage() {
   async function handleImport(source: 'remotive' | 'adzuna' | 'remoteok') {
     setImporting(source)
     setImportResult(null)
+    if (source !== 'adzuna') {
+      sessionStorage.setItem(`import_cooldown_${source}`, String(Date.now()))
+      setImportCooldown(prev => ({ ...prev, [source]: true }))
+    }
     try {
       const result = source === 'remotive' ? await importRemotive() : source === 'remoteok' ? await importRemoteOk() : await importAdzuna()
-      const parts: string[] = [`${result.imported} job${result.imported !== 1 ? 's' : ''} added`]
+      const parts: string[] = []
+      if (result.imported > 0) parts.push(`${result.imported} job${result.imported !== 1 ? 's' : ''} added`)
       if (result.failed) parts.push(`${result.failed} failed`)
-      if (result.filtered) parts.push(`${result.filtered} filtered (no skill match)`)
-      if (result.remaining > 0) parts.push(`${result.remaining} more available — press again to continue`)
-      else if (result.already_imported > 0) parts.push(`all caught up`)
-      if (result.imported > 0) parts.push(`AI scoring running in the background — scores will appear as you refresh`)
+      if (result.filtered) parts.push(`${result.filtered} had no skill match`)
+      if (result.remaining > 0) {
+        parts.push(`${result.remaining} more available`)
+      } else if (result.imported === 0 && result.filtered && result.filtered > 0) {
+        parts.push(`no more jobs matching your skills`)
+      } else {
+        parts.push(`all caught up`)
+      }
+      if (result.imported > 0) parts.push(`AI scoring in background — refresh to see scores`)
       setImportResult(parts.join(' · '))
       if (result.imported > 0) {
         const updated = await getJobs()
@@ -100,6 +116,13 @@ export function MyJobsPage() {
       try { setImportResult(JSON.parse(raw).error ?? raw) } catch { setImportResult(raw) }
     } finally {
       setImporting(null)
+      // Clear cooldown after 90s
+      if (source !== 'adzuna') {
+        setTimeout(() => {
+          setImportCooldown(prev => ({ ...prev, [source]: false }))
+          sessionStorage.removeItem(`import_cooldown_${source}`)
+        }, 90_000)
+      }
     }
   }
 
@@ -121,20 +144,22 @@ export function MyJobsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-bold text-gray-900 mb-1">My Jobs</h2>
-          <p className="text-sm text-gray-400">{jobs.length} analyzed job{jobs.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-400">{jobs.filter(j => j.scoring_status !== 'skipped').length} analyzed job{jobs.filter(j => j.scoring_status !== 'skipped').length !== 1 ? 's' : ''}</p>
         </div>
         <div className="flex items-center gap-2">
           {/* Adzuna button hidden — JP not supported by Adzuna API; re-enable if targeting other countries */}
           <button
             onClick={() => handleImport('remoteok')}
-            disabled={importing !== null}
+            disabled={importing !== null || importCooldown.remoteok}
+            title={importCooldown.remoteok && importing === null ? 'Import recently triggered — wait a moment before importing again' : undefined}
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {importing === 'remoteok' ? 'Importing...' : 'Import from RemoteOK'}
           </button>
           <button
             onClick={() => handleImport('remotive')}
-            disabled={importing !== null}
+            disabled={importing !== null || importCooldown.remotive}
+            title={importCooldown.remotive && importing === null ? 'Import recently triggered — wait a moment before importing again' : undefined}
             className="px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {importing === 'remotive' ? 'Importing...' : 'Import from Remotive'}
@@ -173,7 +198,7 @@ export function MyJobsPage() {
       {jobs.length > 0 && (() => {
         // Profile-level filters (persistent)
         const afterProfileFilters = jobs.filter(j => {
-          if (!displayShowSkipped && j.ai_recommendation === 'skip') return false
+          if (!displayShowSkipped && (j.ai_recommendation === 'skip' || j.scoring_status === 'skipped')) return false
           if (j.ai_score !== null && j.ai_score < displayMinScore) return false
           return true
         })

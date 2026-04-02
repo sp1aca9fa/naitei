@@ -19,34 +19,24 @@ interface Suggestion {
   research: CompanyResearch
 }
 
-export function CompanyResearchCard({ companyName: initialCompany }: { companyName?: string } = {}) {
+export function CompanyResearchCard({ companyName: initialCompany, credits }: { companyName?: string; credits?: number } = {}) {
   const [query, setQuery] = useState(initialCompany ?? '')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
   const [result, setResult] = useState<CompanyResearch | null>(null)
   const [searchedName, setSearchedName] = useState('')
   const [notFound, setNotFound] = useState(false)
+  const [noCredits, setNoCredits] = useState(false)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [availableCredits, setAvailableCredits] = useState(credits ?? 0)
   const containerRef = useRef<HTMLDivElement>(null)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const justSelectedRef = useRef(false)
 
-  // Auto-research when company name is provided as prop
   useEffect(() => {
-    if (!initialCompany) return
-    setSearchedName(initialCompany)
-    setGenerating(true)
-    researchCompany(initialCompany)
-      .then(data => setResult(data))
-      .catch(err => {
-        const msg = err instanceof Error ? err.message : 'Research failed'
-        if (msg.includes('not_found')) setNotFound(true)
-        else setError(msg)
-      })
-      .finally(() => setGenerating(false))
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    if (credits !== undefined) setAvailableCredits(credits)
+  }, [credits])
 
   // Debounced search for dropdown
   useEffect(() => {
@@ -93,37 +83,42 @@ export function CompanyResearchCard({ companyName: initialCompany }: { companyNa
     setShowDropdown(false)
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!query.trim()) return
-    const name = query.trim()
+  async function doResearch(name: string) {
     setSearchedName(name)
     setShowDropdown(false)
     setResult(null)
     setNotFound(false)
+    setNoCredits(false)
     setError(null)
     setGenerating(true)
     try {
       const data = await researchCompany(name)
       setResult(data)
+      setAvailableCredits(c => Math.max(0, c - 1))
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Research failed'
-      if (msg.includes('not_found')) {
-        setNotFound(true)
-      } else {
-        setError(msg)
-      }
+      if (msg.includes('not_found')) setNotFound(true)
+      else if (msg.includes('no_credits')) setNoCredits(true)
+      else setError(msg)
     } finally {
       setGenerating(false)
     }
   }
 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!query.trim()) return
+    await doResearch(query.trim())
+  }
+
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h2 className="text-lg font-semibold text-gray-900 mb-4">
-        Company Research
-      </h2>
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-lg font-semibold text-gray-900">Company Research</h2>
+        <span className="text-xs text-gray-400">{availableCredits} credit{availableCredits !== 1 ? 's' : ''} remaining</span>
+      </div>
 
+      {/* Dashboard mode: search form */}
       {!initialCompany && <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1" ref={containerRef}>
           <input
@@ -157,12 +152,28 @@ export function CompanyResearchCard({ companyName: initialCompany }: { companyNa
         </div>
         <button
           type="submit"
-          disabled={generating || !query.trim()}
+          disabled={generating || !query.trim() || availableCredits <= 0}
           className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {generating ? 'Generating...' : 'Research'}
         </button>
       </form>}
+
+      {/* Job detail mode: request button */}
+      {initialCompany && !result && !generating && (
+        <div className="mb-4">
+          <button
+            onClick={() => doResearch(initialCompany)}
+            disabled={generating || availableCredits <= 0}
+            className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Request Research
+          </button>
+          {availableCredits <= 0 && (
+            <p className="text-xs text-gray-400 mt-2">No credits remaining. Add credits from your profile settings.</p>
+          )}
+        </div>
+      )}
 
       {generating && (
         <div className="mb-4 space-y-1">
@@ -173,14 +184,14 @@ export function CompanyResearchCard({ companyName: initialCompany }: { companyNa
         </div>
       )}
       {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
+      {noCredits && (
+        <p className="text-sm text-gray-500 mb-4">No credits remaining. Add credits from your profile settings.</p>
+      )}
 
       {notFound && (
         <div className="text-sm text-gray-500 border border-gray-200 rounded p-4">
           <p className="font-medium text-gray-700 mb-1">No data found for "{searchedName}"</p>
-          <p>
-            We don't have this company in our database yet.{' '}
-            <span className="text-gray-400">(A page to request manual company registration is coming soon.)</span>
-          </p>
+          <p>This company isn't in our database yet.</p>
         </div>
       )}
 
