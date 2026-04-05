@@ -98,7 +98,7 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Research failed'
       if (msg.includes('not_found')) setNotFound(true)
-      else if (msg.includes('no_credits')) setNoCredits(true)
+      else if (msg.includes('no_credits')) { setNoCredits(true); setAvailableCredits(0) }
       else setError(msg)
     } finally {
       setGenerating(false)
@@ -119,6 +119,9 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
       </div>
 
       {/* Dashboard mode: search form */}
+      {!initialCompany && credits !== undefined && availableCredits <= 0 && (
+        <p className="text-xs text-gray-400 mb-3">No credits remaining. Add credits from your profile settings.</p>
+      )}
       {!initialCompany && <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1" ref={containerRef}>
           <input
