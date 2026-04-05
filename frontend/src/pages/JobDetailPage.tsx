@@ -49,7 +49,7 @@ const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = 
 
 const EFFORT_LABELS: Record<string, string> = { low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
 
-const RESCORE_DELAY_MS = parseFloat(import.meta.env.VITE_RESCORE_DELAY_HOURS ?? '24') * 3600 * 1000
+const RESCORE_DELAY_MS = parseFloat(import.meta.env.VITE_AI_REQUEST_DELAY_HOURS ?? import.meta.env.VITE_RESCORE_DELAY_HOURS ?? '24') * 3600 * 1000
 
 function rescoreAvailableAt(scoredAt: string | null): Date | null {
   if (!scoredAt || RESCORE_DELAY_MS <= 0) return null

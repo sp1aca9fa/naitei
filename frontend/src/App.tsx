@@ -8,6 +8,7 @@ import { ProfilePage } from '@/pages/ProfilePage'
 import { AnalyzePage } from '@/pages/AnalyzePage'
 import { MyJobsPage } from '@/pages/MyJobsPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
+import { ApplicationsPage } from '@/pages/ApplicationsPage'
 import { supabaseMisconfigured } from '@/lib/supabase'
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
           <Route path="/jobs" element={<ProtectedRoute><AppLayout><MyJobsPage /></AppLayout></ProtectedRoute>} />
           <Route path="/jobs/analyze" element={<ProtectedRoute><AppLayout><AnalyzePage /></AppLayout></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><AppLayout><JobDetailPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/applications" element={<ProtectedRoute><AppLayout><ApplicationsPage /></AppLayout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

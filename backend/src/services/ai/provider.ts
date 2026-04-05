@@ -60,7 +60,11 @@ class GeminiProvider implements AIProvider {
       const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)
       const candidate = result.response.candidates?.[0]
       if (!candidate) throw new Error(`Gemini returned no candidates. Prompt feedback: ${JSON.stringify(result.response.promptFeedback)}`)
-      const text = candidate.content.parts.map(p => p.text ?? '').join('')
+      // Filter out thinking parts (Gemini 2.5 models may include thought:true parts even with thinkingBudget:0)
+      const text = candidate.content.parts
+        .filter(p => !(p as unknown as Record<string, unknown>).thought)
+        .map(p => p.text ?? '')
+        .join('')
       if (!text) throw new Error(`Gemini response empty. Finish reason: ${candidate.finishReason}, safety: ${JSON.stringify(candidate.safetyRatings)}`)
       return text
     } catch (err) {
@@ -201,6 +205,25 @@ class MockProvider implements AIProvider {
     if (userPrompt.startsWith('USER PROFILE:')) {
       console.log('[MockProvider] returning mock job score')
       return JSON.stringify(MOCK_JOB_SCORE)
+    }
+    // Interview prep mock
+    if (userPrompt.includes('MATCHED SKILLS:') && userPrompt.includes('likely_questions')) {
+      return JSON.stringify({
+        key_topics: ['Core language/framework fundamentals for the role', 'REST API design basics', 'Git workflow and code review', 'Testing fundamentals'],
+        likely_questions: [
+          { question: 'Walk me through a recent project you built.', tip: 'Pick something with measurable impact. Explain your technical choices.' },
+          { question: 'How do you handle a bug you cannot figure out?', tip: 'Show your debugging process: isolate, reproduce, research, ask.' },
+          { question: 'What do you know about our tech stack?', tip: 'Reference what you found in research. Show genuine curiosity.' },
+          { question: 'How do you stay up to date in your field?', tip: 'Mention specific resources — blogs, newsletters, communities.' },
+          { question: 'Tell me about a time you received critical feedback.', tip: 'Show self-awareness and growth mindset. Keep it brief and outcome-focused.' },
+        ],
+        talking_points: ['Your background story and motivation for this role', 'Specific projects or experience that match their needs', 'Your ability to ramp up quickly and learn on the job'],
+        concerns_to_address: ['Any skill gaps — acknowledge proactively and show a learning plan', 'Career transitions or unconventional background — frame as an asset'],
+      })
+    }
+    // Cover letter mock
+    if (userPrompt.includes('Write a cover letter')) {
+      return JSON.stringify({ text: 'Dear Hiring Manager,\n\nI am writing to express my interest in this role. My background aligns well with what you are looking for, and I am excited by the opportunity to contribute to your team.\n\nThe skills and experience I have built directly match several of your key requirements. I take pride in writing clean, maintainable code and collaborating effectively across teams.\n\nI am particularly drawn to this opportunity because of the engineering culture and the meaningful problems your team is solving. I am a fast learner and committed to growing into a strong contributor from day one.\n\nThank you for considering my application. I would welcome the chance to discuss how my background aligns with your needs.\n\nSincerely,' })
     }
     // Company research mock
     if (userPrompt.includes('Research the company')) {

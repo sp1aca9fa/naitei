@@ -50,6 +50,7 @@ const UpdateProfileSchema = z.object({
   display_min_score: z.number().int().min(0).max(100).optional(),
   display_show_skipped: z.boolean().optional(),
   recent_threshold_hours: z.number().int().min(1).max(720).optional(),
+  follow_up_days: z.number().int().min(1).max(90).optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {

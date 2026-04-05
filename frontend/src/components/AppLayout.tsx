@@ -56,6 +56,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-4">
           <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">Dashboard</Link>
           <JobsDropdown />
+          <Link to="/applications" className="text-sm text-gray-600 hover:text-gray-900">Applications</Link>
           <Link to="/profile" className="text-sm text-gray-600 hover:text-gray-900">Profile</Link>
           <span className="text-sm text-gray-500">{user?.email}</span>
           <button onClick={signOut} className="text-sm text-gray-600 hover:text-gray-900">Sign out</button>

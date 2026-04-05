@@ -176,6 +176,38 @@ export async function saveApplication(jobId: string) {
   return res.json()
 }
 
+export async function getApplications() {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications`, { headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
+export async function generateInterviewPrep(id: string, force = false) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}/interview-prep${force ? '?force=true' : ''}`, { method: 'POST', headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
+export async function generateCoverLetter(id: string, force = false) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}/cover-letter${force ? '?force=true' : ''}`, { method: 'POST', headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
+export async function updateApplication(id: string, fields: Record<string, unknown>) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}`, {
+    method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(fields),
+  })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
 export async function researchCompany(companyName: string, jobTitle?: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/company/research`, {

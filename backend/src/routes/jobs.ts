@@ -473,7 +473,7 @@ router.post('/:id/rescore', requireAuth, aiLimiter, async (req: Request, res: Re
   }
 
   // Enforce rescore delay
-  const delayHours = parseFloat(process.env.RESCORE_DELAY_HOURS ?? '24')
+  const delayHours = parseFloat(process.env.AI_REQUEST_DELAY_HOURS ?? process.env.RESCORE_DELAY_HOURS ?? '24')
   if (job.scored_at && delayHours > 0) {
     const availableAt = new Date(new Date(job.scored_at).getTime() + delayHours * 3600 * 1000)
     if (availableAt > new Date()) {
