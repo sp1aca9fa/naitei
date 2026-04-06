@@ -66,7 +66,7 @@ export const InterviewPrepSchema = z.object({
   key_topics: z.array(z.string()),
   likely_questions: z.array(z.object({ question: z.string(), tip: z.string() })),
   talking_points: z.array(z.string()),
-  concerns_to_address: z.array(z.string()),
+  concerns_to_address: z.array(z.object({ potential_concern: z.string(), how_to_address: z.string() })),
 })
 
 export type InterviewPrep = z.infer<typeof InterviewPrepSchema>

@@ -52,9 +52,10 @@ class GeminiProvider implements AIProvider {
   async complete(systemPrompt: string, userPrompt: string): Promise<string> {
     const model = this.client.getGenerativeModel({
       model: this.modelName,
-      // Disable thinking for structured JSON tasks — thinking tokens are billed at output rate
-      // and add no value when the output format is fully specified.
-      generationConfig: { thinkingConfig: { thinkingBudget: 0 } } as object,
+      // Force JSON output and disable thinking budget.
+      // responseMimeType prevents Gemini from wrapping output in markdown or adding prose.
+      // thinkingBudget:0 disables thinking tokens (billed at output rate, no value for structured tasks).
+      generationConfig: { responseMimeType: 'application/json', thinkingConfig: { thinkingBudget: 0 } } as object,
     })
     try {
       const result = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`)

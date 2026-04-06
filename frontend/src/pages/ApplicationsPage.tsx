@@ -9,7 +9,7 @@ interface InterviewPrep {
   key_topics: string[]
   likely_questions: { question: string; tip: string }[]
   talking_points: string[]
-  concerns_to_address: string[]
+  concerns_to_address: { potential_concern: string; how_to_address: string }[]
 }
 
 interface Application {
@@ -590,7 +590,17 @@ function ApplicationCard({
                           </div>
                         </div>
                         <PrepSection title="Talking points" items={app.interview_prep.talking_points} />
-                        <PrepSection title="Concerns to address" items={app.interview_prep.concerns_to_address} />
+                        <div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Concerns to address</p>
+                          <ul className="space-y-2">
+                            {app.interview_prep.concerns_to_address.map((c, i) => (
+                              <li key={i} className="text-xs text-gray-600">
+                                <span className="font-medium text-gray-700">{c.potential_concern}</span>
+                                <span className="block text-gray-500 mt-0.5">{c.how_to_address}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
                         <button
                           onClick={() => !prepBlocked && !generatingPrep && onGeneratePrep(true)}
                           disabled={prepBlocked || generatingPrep}

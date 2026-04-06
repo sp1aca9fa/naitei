@@ -168,7 +168,7 @@ router.post('/:id/interview-prep', requireAuth, aiLimiter, async (req: Request, 
 
   const validation = InterviewPrepSchema.safeParse(parsed)
   if (!validation.success) {
-    console.error('[interview-prep] Validation failed. Raw:', raw.slice(0, 500), 'Errors:', JSON.stringify(validation.error.flatten()))
+    console.error('[interview-prep] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
     return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
   }
 

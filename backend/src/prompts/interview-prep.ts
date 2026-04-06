@@ -26,5 +26,5 @@ CANDIDATE: ${p.experienceSummary}
 SKILLS: ${p.skills.join(', ')}
 
 Return JSON:
-{"key_topics":["topic to review before interview"],"likely_questions":[{"question":"...","tip":"brief answer tip"}],"talking_points":["strength or angle to proactively bring up"],"concerns_to_address":["potential interviewer concern and how to preempt it"]}`
+{"key_topics":["topic to review before interview"],"likely_questions":[{"question":"...","tip":"brief answer tip"}],"talking_points":["strength or angle to proactively bring up"],"concerns_to_address":[{"potential_concern":"...","how_to_address":"..."}]}`
 }
