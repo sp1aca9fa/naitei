@@ -3,10 +3,12 @@ import { z } from 'zod'
 import { requireAuth } from '../middleware/auth'
 import { aiLimiter } from '../middleware/rateLimiter'
 import { getCompanyAIProvider } from '../services/ai/provider'
-import { InterviewPrepSchema, CoverLetterSchema } from '../services/ai/schemas'
+import { InterviewPrepSchema, CoverLetterSchema, ApplyChecklistSchema, ResumeOptimizationSchema } from '../services/ai/schemas'
 import { parseAIJson } from '../services/ai/parseJson'
 import { INTERVIEW_PREP_SYSTEM, interviewPrepPrompt } from '../prompts/interview-prep'
 import { COVER_LETTER_SYSTEM, coverLetterPrompt } from '../prompts/cover-letter'
+import { APPLY_CHECKLIST_SYSTEM, applyChecklistPrompt } from '../prompts/apply-checklist'
+import { RESUME_OPTIMIZATION_SYSTEM, resumeOptimizationPrompt } from '../prompts/resume-optimization'
 import { supabase } from '../lib/supabase'
 
 const router = Router()
@@ -47,11 +49,25 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('applications')
-    .select('id, status, created_at, updated_at, applied_at, follow_up_date, interview_round, recruiter_name, notes, cover_letter, cover_letter_generated_at, interview_prep, interview_prep_generated_at, offer_monthly_salary, offer_annual_salary, offer_bonus_type, offer_bonus_amount, offer_bonus_times, offer_notes, job_id, jobs(id, title, company, ai_score, ai_recommendation, ats_score, source)')
+    .select('id, status, created_at, updated_at, applied_at, follow_up_date, interview_round, recruiter_name, notes, cover_letter, cover_letter_generated_at, interview_prep, interview_prep_generated_at, apply_checklist, apply_checklist_generated_at, resume_optimization, resume_optimization_generated_at, offer_monthly_salary, offer_annual_salary, offer_bonus_type, offer_bonus_amount, offer_bonus_times, offer_notes, job_id, jobs(id, title, company, ai_score, ai_recommendation, ats_score, source)')
     .eq('user_id', req.user!.id)
     .order('created_at', { ascending: false })
 
   if (error) return res.status(500).json({ error: error.message })
+  return res.json(data)
+})
+
+// GET /applications/:id — single application with full data
+router.get('/:id', requireAuth, async (req: Request, res: Response) => {
+  const { data, error } = await supabase
+    .from('applications')
+    .select('id, status, interview_round, interview_prep, interview_prep_generated_at, resume_optimization, resume_optimization_generated_at, job_id, jobs(id, title, company)')
+    .eq('id', req.params.id)
+    .eq('user_id', req.user!.id)
+    .single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'Not found' })
   return res.json(data)
 })
 
@@ -230,6 +246,133 @@ router.post('/:id/cover-letter', requireAuth, aiLimiter, async (req: Request, re
   const now = new Date().toISOString()
   await supabase.from('applications').update({ cover_letter: validation.data.text, cover_letter_generated_at: now }).eq('id', req.params.id).eq('user_id', req.user!.id)
   return res.json({ cover_letter: validation.data.text, cover_letter_generated_at: now })
+})
+
+// POST /applications/:id/apply-checklist — generate quick apply checklist
+router.post('/:id/apply-checklist', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const force = req.query.force === 'true'
+
+  const [{ data: app }, { data: profile }] = await Promise.all([
+    supabase.from('applications')
+      .select('id, apply_checklist, apply_checklist_generated_at, job_id, jobs(title, company, description_raw, matched_skills, missing_skills, ai_green_flags, ai_red_flags, ai_recommendation, ai_recommendation_reason)')
+      .eq('id', req.params.id).eq('user_id', req.user!.id).single(),
+    supabase.from('profiles')
+      .select('raw_resume_text, resume_versions, active_resume_version_id')
+      .eq('user_id', req.user!.id).single(),
+  ])
+
+  if (!app) return res.status(404).json({ error: 'Application not found' })
+  if (!force && app.apply_checklist) return res.json(app.apply_checklist)
+
+  if (force) {
+    const delay = checkAIDelay((app as Record<string, unknown>).apply_checklist_generated_at as string | null)
+    if (delay.blocked) return res.status(429).json({ error: 'Regenerate not available yet.', available_at: delay.available_at })
+  }
+
+  const job = app.jobs as Record<string, unknown> | null
+  if (!job) return res.status(400).json({ error: 'Job data missing' })
+
+  // Prefer the active resume version's text, fall back to raw_resume_text
+  const versions = Array.isArray(profile?.resume_versions) ? profile.resume_versions as { id: string; text: string }[] : []
+  const activeVersion = versions.find(v => v.id === profile?.active_resume_version_id)
+  const resumeText = activeVersion?.text ?? profile?.raw_resume_text ?? null
+  if (!resumeText) return res.status(400).json({ error: 'No resume uploaded' })
+
+  const ai = getCompanyAIProvider()
+  let raw: string
+  try {
+    raw = await ai.complete(APPLY_CHECKLIST_SYSTEM, applyChecklistPrompt({
+      jobTitle: job.title as string,
+      company: (job.company as string) ?? '',
+      descriptionExcerpt: ((job.description_raw as string) ?? '').slice(0, 800),
+      matchedSkills: (job.matched_skills as string[]) ?? [],
+      missingSkills: (job.missing_skills as string[]) ?? [],
+      greenFlags: (job.ai_green_flags as string[]) ?? [],
+      redFlags: (job.ai_red_flags as string[]) ?? [],
+      recommendation: (job.ai_recommendation as string) ?? '',
+      recommendationReason: (job.ai_recommendation_reason as string) ?? '',
+      resumeText: resumeText.slice(0, 3000),
+    }))
+  } catch (err) {
+    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+  }
+
+  let parsed: unknown
+  try { parsed = parseAIJson(raw) } catch {
+    return res.status(502).json({ error: 'AI returned invalid JSON' })
+  }
+
+  const validation = ApplyChecklistSchema.safeParse(parsed)
+  if (!validation.success) {
+    console.error('[apply-checklist] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
+    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+  }
+
+  const now = new Date().toISOString()
+  await supabase.from('applications').update({ apply_checklist: validation.data, apply_checklist_generated_at: now }).eq('id', req.params.id).eq('user_id', req.user!.id)
+  return res.json(validation.data)
+})
+
+// POST /applications/:id/resume-optimization — full CV audit against the job
+router.post('/:id/resume-optimization', requireAuth, aiLimiter, async (req: Request, res: Response) => {
+  const force = req.query.force === 'true'
+
+  const [{ data: app }, { data: profile }] = await Promise.all([
+    supabase.from('applications')
+      .select('id, resume_optimization, resume_optimization_generated_at, job_id, jobs(title, company, description_raw, matched_skills, missing_skills, ai_recommendation, ai_recommendation_reason)')
+      .eq('id', req.params.id).eq('user_id', req.user!.id).single(),
+    supabase.from('profiles')
+      .select('raw_resume_text, resume_versions, active_resume_version_id')
+      .eq('user_id', req.user!.id).single(),
+  ])
+
+  if (!app) return res.status(404).json({ error: 'Application not found' })
+  if (!force && app.resume_optimization) return res.json(app.resume_optimization)
+
+  if (force) {
+    const delay = checkAIDelay((app as Record<string, unknown>).resume_optimization_generated_at as string | null)
+    if (delay.blocked) return res.status(429).json({ error: 'Regenerate not available yet.', available_at: delay.available_at })
+  }
+
+  const job = app.jobs as Record<string, unknown> | null
+  if (!job) return res.status(400).json({ error: 'Job data missing' })
+
+  const versions = Array.isArray(profile?.resume_versions) ? profile.resume_versions as { id: string; text: string }[] : []
+  const activeVersion = versions.find(v => v.id === profile?.active_resume_version_id)
+  const resumeText = activeVersion?.text ?? profile?.raw_resume_text ?? null
+  if (!resumeText) return res.status(400).json({ error: 'No resume uploaded' })
+
+  const ai = getCompanyAIProvider()
+  let raw: string
+  try {
+    raw = await ai.complete(RESUME_OPTIMIZATION_SYSTEM, resumeOptimizationPrompt({
+      jobTitle: job.title as string,
+      company: (job.company as string) ?? '',
+      jobDescription: (job.description_raw as string) ?? '',
+      matchedSkills: (job.matched_skills as string[]) ?? [],
+      missingSkills: (job.missing_skills as string[]) ?? [],
+      recommendation: (job.ai_recommendation as string) ?? '',
+      recommendationReason: (job.ai_recommendation_reason as string) ?? '',
+      resumeText,
+    }))
+  } catch (err) {
+    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+  }
+
+  let parsed: unknown
+  try { parsed = parseAIJson(raw) } catch {
+    return res.status(502).json({ error: 'AI returned invalid JSON' })
+  }
+
+  const validation = ResumeOptimizationSchema.safeParse(parsed)
+  if (!validation.success) {
+    console.error('[resume-optimization] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
+    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+  }
+
+  const now = new Date().toISOString()
+  await supabase.from('applications').update({ resume_optimization: validation.data, resume_optimization_generated_at: now }).eq('id', req.params.id).eq('user_id', req.user!.id)
+  return res.json(validation.data)
 })
 
 export default router

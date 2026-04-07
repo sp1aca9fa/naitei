@@ -197,6 +197,27 @@ export async function generateCoverLetter(id: string, force = false) {
   return res.json()
 }
 
+export async function getApplication(id: string) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}`, { headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
+export async function generateResumeOptimization(id: string, force = false) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}/resume-optimization${force ? '?force=true' : ''}`, { method: 'POST', headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
+export async function generateApplyChecklist(id: string, force = false) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/applications/${id}/apply-checklist${force ? '?force=true' : ''}`, { method: 'POST', headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
 export async function updateApplication(id: string, fields: Record<string, unknown>) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/applications/${id}`, {

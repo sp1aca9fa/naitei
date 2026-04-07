@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Link } from 'react-router-dom'
-import { getApplications, updateApplication, getProfile, generateInterviewPrep, generateCoverLetter } from '../lib/api'
+import { Link, useSearchParams } from 'react-router-dom'
+import { getApplications, updateApplication, getProfile, generateInterviewPrep, generateCoverLetter, generateApplyChecklist } from '../lib/api'
 
 type AppStatus = 'saved' | 'applied' | 'interview' | 'offer' | 'removed'
 type BonusType = '1_salary' | '2_salary' | '3_salary' | 'manual'
@@ -10,6 +10,20 @@ interface InterviewPrep {
   likely_questions: { question: string; tip: string }[]
   talking_points: string[]
   concerns_to_address: { potential_concern: string; how_to_address: string }[]
+}
+
+interface ApplyChecklist {
+  what_to_emphasize: string[]
+  what_to_research: string[]
+  resume_tip: string
+  quick_tips: string[]
+}
+
+interface ResumeOptimization {
+  verdict: 'strong' | 'needs_tweaks' | 'major_overhaul'
+  summary: string
+  improvements: { area: string; issue: string; suggestion: string; rewrite?: string | null }[]
+  priority_actions: string[]
 }
 
 interface Application {
@@ -32,6 +46,10 @@ interface Application {
   cover_letter_generated_at: string | null
   interview_prep: InterviewPrep | null
   interview_prep_generated_at: string | null
+  apply_checklist: ApplyChecklist | null
+  apply_checklist_generated_at: string | null
+  resume_optimization: ResumeOptimization | null
+  resume_optimization_generated_at: string | null
   job_id: string
   jobs: {
     id: string
@@ -389,26 +407,30 @@ function OfferDetails({ app, onUpdate }: { app: Application; onUpdate: (id: stri
 function ApplicationCard({
   app,
   followUpDays,
+  initialExpanded,
   generatingPrep,
   generatingCoverLetter,
+  generatingChecklist,
   onUpdate,
   onMove,
-  onGeneratePrep,
   onGenerateCoverLetter,
+  onGenerateChecklist,
 }: {
   app: Application
   followUpDays: number
+  initialExpanded?: boolean
   generatingPrep: boolean
   generatingCoverLetter: boolean
+  generatingChecklist: boolean
   onUpdate: (id: string, fields: Partial<Application>) => void
   onMove: (id: string, status: AppStatus, extra?: Record<string, unknown>) => void
-  onGeneratePrep: (force: boolean) => void
   onGenerateCoverLetter: (force: boolean) => void
+  onGenerateChecklist: (force: boolean) => void
 }) {
-  const [expanded, setExpanded] = useState(false)
+  const [expanded, setExpanded] = useState(initialExpanded ?? false)
   const [offerExpanded, setOfferExpanded] = useState(false)
   const [coverLetterExpanded, setCoverLetterExpanded] = useState(false)
-  const [prepExpanded, setPrepExpanded] = useState(false)
+  const [checklistExpanded, setChecklistExpanded] = useState(false)
   const [recruiterName, setRecruiterName] = useState(app.recruiter_name ?? '')
   const [notes, setNotes] = useState(app.notes ?? '')
   const [coverLetterText, setCoverLetterText] = useState(app.cover_letter ?? '')
@@ -559,67 +581,82 @@ function ApplicationCard({
           )}
 
           {/* Interview prep — interview column only */}
-          {app.status === 'interview' && (() => {
-            const prepAvailableAt = aiActionAvailableAt(app.interview_prep_generated_at)
-            const prepBlocked = !!prepAvailableAt
+          {app.status === 'interview' && (
+            <div className="border-t border-gray-100 pt-2">
+              <Link
+                to={`/applications/${app.id}/interview-prep`}
+                className="flex items-center justify-between w-full text-xs px-2 py-1.5 rounded border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 font-medium transition-colors"
+                onClick={e => e.stopPropagation()}
+              >
+                <span>
+                  Interview Prep
+                  {app.interview_prep && <span className="ml-1 text-green-600">✓</span>}
+                  {generatingPrep && <span className="ml-1 text-gray-400 animate-pulse">generating...</span>}
+                </span>
+                <span className="text-gray-400">→</span>
+              </Link>
+            </div>
+          )}
+
+          {/* Resume Optimization — saved + applied */}
+          {(['saved', 'applied'] as AppStatus[]).includes(app.status) && (
+            <div className="border-t border-gray-100 pt-2">
+              <Link
+                to={`/applications/${app.id}/optimize`}
+                className="flex items-center justify-between w-full text-xs px-2 py-1.5 rounded border bg-white border-gray-200 text-gray-600 hover:bg-gray-50 font-medium transition-colors"
+                onClick={e => e.stopPropagation()}
+              >
+                <span>
+                  Optimize Resume
+                  {app.resume_optimization && <span className="ml-1 text-green-600">✓</span>}
+                </span>
+                <span className="text-gray-400">→</span>
+              </Link>
+            </div>
+          )}
+
+          {/* Quick Apply checklist — saved + applied */}
+          {(['saved', 'applied'] as AppStatus[]).includes(app.status) && (() => {
+            const clAvailableAt = aiActionAvailableAt(app.apply_checklist_generated_at)
+            const clBlocked = !!clAvailableAt
             return (
               <div className="border-t border-gray-100 pt-2">
                 <button
-                  onClick={() => setPrepExpanded(v => !v)}
-                  className={`w-full text-xs px-2 py-1.5 rounded border font-medium transition-colors text-left ${prepExpanded ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => setChecklistExpanded(v => !v)}
+                  className={`w-full text-xs px-2 py-1.5 rounded border font-medium transition-colors text-left ${checklistExpanded ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
                 >
-                  Interview Prep {prepExpanded ? '▲' : '▼'}
-                  {app.interview_prep && <span className="ml-1 text-green-600">✓</span>}
+                  Quick Apply Checklist {checklistExpanded ? '▲' : '▼'}
+                  {app.apply_checklist && <span className="ml-1 text-green-600">✓</span>}
                 </button>
-                {prepExpanded && (
+                {checklistExpanded && (
                   <div className="mt-3 space-y-3">
-                    {generatingPrep ? (
-                      <p className="text-xs text-gray-400 animate-pulse">Preparing interview guidance...</p>
-                    ) : app.interview_prep ? (
+                    {generatingChecklist ? (
+                      <p className="text-xs text-gray-400 animate-pulse">Generating checklist...</p>
+                    ) : app.apply_checklist ? (
                       <>
-                        <PrepSection title="Topics to review" items={app.interview_prep.key_topics} />
+                        <PrepSection title="What to emphasize" items={app.apply_checklist.what_to_emphasize} />
+                        <PrepSection title="What to research" items={app.apply_checklist.what_to_research} />
                         <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Likely questions</p>
-                          <div className="space-y-2">
-                            {app.interview_prep.likely_questions.map((q, i) => (
-                              <div key={i} className="bg-white border border-gray-200 rounded p-2">
-                                <p className="text-xs font-medium text-gray-700">{q.question}</p>
-                                <p className="text-xs text-gray-500 mt-0.5">{q.tip}</p>
-                              </div>
-                            ))}
-                          </div>
+                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">Resume tip</p>
+                          <p className="text-xs text-gray-600">{app.apply_checklist.resume_tip}</p>
                         </div>
-                        <PrepSection title="Talking points" items={app.interview_prep.talking_points} />
-                        <div>
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1.5">Concerns to address</p>
-                          <ul className="space-y-2">
-                            {app.interview_prep.concerns_to_address.map((c, i) => (
-                              <li key={i} className="text-xs text-gray-600">
-                                <span className="font-medium text-gray-700">{c.potential_concern}</span>
-                                <span className="block text-gray-500 mt-0.5">{c.how_to_address}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
+                        <PrepSection title="Quick tips" items={app.apply_checklist.quick_tips} />
                         <button
-                          onClick={() => !prepBlocked && !generatingPrep && onGeneratePrep(true)}
-                          disabled={prepBlocked || generatingPrep}
+                          onClick={() => !clBlocked && !generatingChecklist && onGenerateChecklist(true)}
+                          disabled={clBlocked || generatingChecklist}
                           className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
                         >
-                          {prepBlocked ? `Regenerate available in ${formatAvailableIn(prepAvailableAt!)}` : 'Regenerate'}
+                          {clBlocked ? `Regenerate available in ${formatAvailableIn(clAvailableAt!)}` : 'Regenerate'}
                         </button>
                       </>
                     ) : (
-                      <div>
-                        <p className="text-xs text-gray-400 mb-2">Interview prep could not be generated automatically.</p>
-                        <button
-                          onClick={() => !generatingPrep && onGeneratePrep(false)}
-                          disabled={generatingPrep}
-                          className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Generate now
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => !generatingChecklist && onGenerateChecklist(false)}
+                        disabled={generatingChecklist}
+                        className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Generate Checklist
+                      </button>
                     )}
                   </div>
                 )}
@@ -725,6 +762,8 @@ function ApplicationCard({
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export function ApplicationsPage() {
+  const [searchParams] = useSearchParams()
+  const expandId = searchParams.get('expand')
   const [apps, setApps] = useState<Application[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -732,6 +771,7 @@ export function ApplicationsPage() {
   const [showRemoved, setShowRemoved] = useState(false)
   const [generatingPrep, setGeneratingPrep] = useState<Record<string, boolean>>({})
   const [generatingCoverLetter, setGeneratingCoverLetter] = useState<Record<string, boolean>>({})
+  const [generatingChecklist, setGeneratingChecklist] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     Promise.all([getApplications(), getProfile()])
@@ -787,6 +827,18 @@ export function ApplicationsPage() {
     }
   }
 
+  async function handleGenerateChecklist(id: string, force: boolean) {
+    setGeneratingChecklist(prev => ({ ...prev, [id]: true }))
+    try {
+      const result = await generateApplyChecklist(id, force)
+      setApps(prev => prev.map(a => a.id === id ? { ...a, apply_checklist: result, apply_checklist_generated_at: new Date().toISOString() } : a))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to generate checklist')
+    } finally {
+      setGeneratingChecklist(prev => { const n = { ...prev }; delete n[id]; return n })
+    }
+  }
+
   const removed = apps.filter(a => a.status === 'removed')
   const active = apps.filter(a => a.status !== 'removed')
 
@@ -825,12 +877,14 @@ export function ApplicationsPage() {
                             key={app.id}
                             app={app}
                             followUpDays={followUpDays}
+                            initialExpanded={expandId === app.id}
                             generatingPrep={!!generatingPrep[app.id]}
                             generatingCoverLetter={!!generatingCoverLetter[app.id]}
+                            generatingChecklist={!!generatingChecklist[app.id]}
                             onUpdate={handleUpdate}
                             onMove={handleMove}
-                            onGeneratePrep={(force) => handleGeneratePrep(app.id, force)}
                             onGenerateCoverLetter={(force) => handleGenerateCoverLetter(app.id, force)}
+                            onGenerateChecklist={(force) => handleGenerateChecklist(app.id, force)}
                           />
                         ))
                     }

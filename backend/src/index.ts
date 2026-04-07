@@ -7,6 +7,7 @@ import profileRouter from './routes/profile'
 import companyRouter from './routes/company'
 import jobsRouter from './routes/jobs'
 import applicationsRouter from './routes/applications'
+import cronRouter from './routes/cron'
 
 const app = express()
 app.set('trust proxy', 1)
@@ -29,6 +30,10 @@ app.use(cors(corsOptions))
 app.options('*', cors(corsOptions))
 
 app.use(express.json())
+
+// Cron routes — registered before apiLimiter, auth handled internally via CRON_SECRET
+app.use('/cron', cronRouter)
+
 app.use(apiLimiter)
 
 app.use('/health', healthRouter)

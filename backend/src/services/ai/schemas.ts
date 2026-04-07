@@ -74,3 +74,26 @@ export type InterviewPrep = z.infer<typeof InterviewPrepSchema>
 export const CoverLetterSchema = z.object({
   text: z.string().min(50),
 })
+
+export const ApplyChecklistSchema = z.object({
+  what_to_emphasize: z.array(z.string()),
+  what_to_research: z.array(z.string()),
+  resume_tip: z.string(),
+  quick_tips: z.array(z.string()),
+})
+
+export type ApplyChecklist = z.infer<typeof ApplyChecklistSchema>
+
+export const ResumeOptimizationSchema = z.object({
+  verdict: z.enum(['strong', 'needs_tweaks', 'major_overhaul']),
+  summary: z.string(),
+  improvements: z.array(z.object({
+    area: z.string(),
+    issue: z.string(),
+    suggestion: z.string(),
+    rewrite: z.preprocess(v => (typeof v === 'string' ? v : null), z.string().nullish()),
+  })),
+  priority_actions: z.array(z.string()),
+})
+
+export type ResumeOptimization = z.infer<typeof ResumeOptimizationSchema>

@@ -39,6 +39,13 @@ interface Profile {
   display_min_score: number | null
   display_show_skipped: boolean | null
   recent_threshold_hours: number | null
+  email_notifications_enabled: boolean | null
+  notify_saved_enabled: boolean | null
+  notify_saved_days: number | null
+  notify_applied_enabled: boolean | null
+  notify_applied_days: number | null
+  notify_interview_enabled: boolean | null
+  notify_interview_days: number | null
 }
 
 interface ReviewState {
@@ -69,13 +76,22 @@ export function ProfilePage() {
   const [displayShowSkipped, setDisplayShowSkipped] = useState(false)
   const [recentThresholdHours, setRecentThresholdHours] = useState(48)
   const [prefsSaveStatus, setPrefsSaveStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false)
+  const [notifySavedEnabled, setNotifySavedEnabled] = useState(false)
+  const [notifySavedDays, setNotifySavedDays] = useState(14)
+  const [notifyAppliedEnabled, setNotifyAppliedEnabled] = useState(true)
+  const [notifyAppliedDays, setNotifyAppliedDays] = useState(7)
+  const [notifyInterviewEnabled, setNotifyInterviewEnabled] = useState(true)
+  const [notifyInterviewDays, setNotifyInterviewDays] = useState(7)
   const fileRef = useRef<HTMLInputElement>(null)
   const weightsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blocklistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const displayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const emailTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastSavedWeightsRef = useRef<ScoreWeights | null>(null)
   const lastSavedBlocklistRef = useRef<string[] | null>(null)
   const lastSavedDisplayRef = useRef<{ min_score: number; show_skipped: boolean; recent_threshold_hours: number } | null>(null)
+  const lastSavedEmailRef = useRef<{ enabled: boolean; savedEnabled: boolean; savedDays: number; appliedEnabled: boolean; appliedDays: number; interviewEnabled: boolean; interviewDays: number } | null>(null)
 
   useEffect(() => {
     getProfile()
@@ -86,6 +102,21 @@ export function ProfilePage() {
         lastSavedWeightsRef.current = p.score_weights ?? DEFAULT_WEIGHTS
         lastSavedBlocklistRef.current = p.blocklist_words ?? []
         lastSavedDisplayRef.current = { min_score: minScore, show_skipped: showSkipped, recent_threshold_hours: recentThreshold }
+        const emailEnabled = p.email_notifications_enabled ?? false
+        const savedEnabled = p.notify_saved_enabled ?? false
+        const savedDays = p.notify_saved_days ?? 14
+        const appliedEnabled = p.notify_applied_enabled ?? true
+        const appliedDays = p.notify_applied_days ?? 7
+        const interviewEnabled = p.notify_interview_enabled ?? true
+        const interviewDays = p.notify_interview_days ?? 7
+        lastSavedEmailRef.current = { enabled: emailEnabled, savedEnabled, savedDays, appliedEnabled, appliedDays, interviewEnabled, interviewDays }
+        setEmailNotificationsEnabled(emailEnabled)
+        setNotifySavedEnabled(savedEnabled)
+        setNotifySavedDays(savedDays)
+        setNotifyAppliedEnabled(appliedEnabled)
+        setNotifyAppliedDays(appliedDays)
+        setNotifyInterviewEnabled(interviewEnabled)
+        setNotifyInterviewDays(interviewDays)
         setProfile(p)
         setWeights(p.score_weights ?? DEFAULT_WEIGHTS)
         setBlocklist(p.blocklist_words ?? [])
@@ -144,6 +175,21 @@ export function ProfilePage() {
     return () => { if (displayTimerRef.current) clearTimeout(displayTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayMinScore, displayShowSkipped, recentThresholdHours])
+
+  useEffect(() => {
+    if (lastSavedEmailRef.current === null) return
+    const current = { enabled: emailNotificationsEnabled, savedEnabled: notifySavedEnabled, savedDays: notifySavedDays, appliedEnabled: notifyAppliedEnabled, appliedDays: notifyAppliedDays, interviewEnabled: notifyInterviewEnabled, interviewDays: notifyInterviewDays }
+    if (JSON.stringify(current) === JSON.stringify(lastSavedEmailRef.current)) return
+    if (emailTimerRef.current) clearTimeout(emailTimerRef.current)
+    emailTimerRef.current = setTimeout(async () => {
+      try {
+        await updateProfile({ email_notifications_enabled: emailNotificationsEnabled, notify_saved_enabled: notifySavedEnabled, notify_saved_days: notifySavedDays, notify_applied_enabled: notifyAppliedEnabled, notify_applied_days: notifyAppliedDays, notify_interview_enabled: notifyInterviewEnabled, notify_interview_days: notifyInterviewDays })
+        lastSavedEmailRef.current = current
+      } catch { /* silent */ }
+    }, 500)
+    return () => { if (emailTimerRef.current) clearTimeout(emailTimerRef.current) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailNotificationsEnabled, notifySavedEnabled, notifySavedDays, notifyAppliedEnabled, notifyAppliedDays, notifyInterviewEnabled, notifyInterviewDays])
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -658,6 +704,82 @@ export function ProfilePage() {
           </select>
           <p className="text-xs text-gray-400">Jobs posted within this window show a "Recent" badge. Applying early significantly improves reply rates.</p>
         </div>
+      </section>
+
+      {/* Email Notifications */}
+      <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-800">Email Notifications</h2>
+        <p className="text-xs text-gray-500">Receive reminders by email so you don't miss important updates even when you're not using the app.</p>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={emailNotificationsEnabled}
+            onChange={e => setEmailNotificationsEnabled(e.target.checked)}
+            className="w-4 h-4 accent-blue-600"
+          />
+          <span className="text-sm font-medium text-gray-700">Enable email notifications</span>
+        </label>
+
+        {emailNotificationsEnabled && (
+          <div className="pl-2 ml-2 border-l-2 border-gray-100 space-y-4">
+
+            {/* Saved reminders */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={notifySavedEnabled} onChange={e => setNotifySavedEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                <div>
+                  <span className="text-sm text-gray-700">Saved jobs with no action</span>
+                  <p className="text-xs text-gray-400">Remind me when a saved job hasn't been moved forward.</p>
+                </div>
+              </label>
+              {notifySavedEnabled && (
+                <div className="pl-7 flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Notify after</span>
+                  <input type="number" min={1} max={90} value={notifySavedDays} onChange={e => setNotifySavedDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
+                  <span className="text-xs text-gray-500">days with no action</span>
+                </div>
+              )}
+            </div>
+
+            {/* Applied reminders */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={notifyAppliedEnabled} onChange={e => setNotifyAppliedEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                <div>
+                  <span className="text-sm text-gray-700">Applied — no response</span>
+                  <p className="text-xs text-gray-400">Remind me to follow up when an applied job has had no update.</p>
+                </div>
+              </label>
+              {notifyAppliedEnabled && (
+                <div className="pl-7 flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Notify after</span>
+                  <input type="number" min={1} max={90} value={notifyAppliedDays} onChange={e => setNotifyAppliedDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
+                  <span className="text-xs text-gray-500">days with no update</span>
+                </div>
+              )}
+            </div>
+
+            {/* Interview reminders */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={notifyInterviewEnabled} onChange={e => setNotifyInterviewEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
+                <div>
+                  <span className="text-sm text-gray-700">Interview — no update</span>
+                  <p className="text-xs text-gray-400">Remind me to follow up after an interview when there's been no update. Resets each time you advance to a new round.</p>
+                </div>
+              </label>
+              {notifyInterviewEnabled && (
+                <div className="pl-7 flex items-center gap-2">
+                  <span className="text-xs text-gray-500">Notify after</span>
+                  <input type="number" min={1} max={90} value={notifyInterviewDays} onChange={e => setNotifyInterviewDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
+                  <span className="text-xs text-gray-500">days with no update</span>
+                </div>
+              )}
+            </div>
+
+          </div>
+        )}
       </section>
 
     </div>

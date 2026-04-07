@@ -397,7 +397,7 @@ router.post('/import/remoteok', requireAuth, importLimiter, async (req: Request,
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, posted_at, created_at')
+    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, posted_at, created_at, missing_skills')
     .eq('user_id', req.user!.id)
     .order('created_at', { ascending: false })
     .limit(50)

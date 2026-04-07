@@ -9,6 +9,10 @@ import { AnalyzePage } from '@/pages/AnalyzePage'
 import { MyJobsPage } from '@/pages/MyJobsPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
 import { ApplicationsPage } from '@/pages/ApplicationsPage'
+import { ResumeOptimizationPage } from '@/pages/ResumeOptimizationPage'
+import { OptimizationsIndexPage } from '@/pages/OptimizationsIndexPage'
+import { InterviewPrepPage } from '@/pages/InterviewPrepPage'
+import { InterviewPrepIndexPage } from '@/pages/InterviewPrepIndexPage'
 import { supabaseMisconfigured } from '@/lib/supabase'
 
 export default function App() {
@@ -40,6 +44,10 @@ export default function App() {
           <Route path="/jobs/analyze" element={<ProtectedRoute><AppLayout><AnalyzePage /></AppLayout></ProtectedRoute>} />
           <Route path="/jobs/:id" element={<ProtectedRoute><AppLayout><JobDetailPage /></AppLayout></ProtectedRoute>} />
           <Route path="/applications" element={<ProtectedRoute><AppLayout><ApplicationsPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/applications/:id/optimize" element={<ProtectedRoute><AppLayout><ResumeOptimizationPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/optimizations" element={<ProtectedRoute><AppLayout><OptimizationsIndexPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/applications/:id/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepIndexPage /></AppLayout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
