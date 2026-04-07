@@ -13,6 +13,7 @@ import { ResumeOptimizationPage } from '@/pages/ResumeOptimizationPage'
 import { OptimizationsIndexPage } from '@/pages/OptimizationsIndexPage'
 import { InterviewPrepPage } from '@/pages/InterviewPrepPage'
 import { InterviewPrepIndexPage } from '@/pages/InterviewPrepIndexPage'
+import { InsightsPage } from '@/pages/InsightsPage'
 import { supabaseMisconfigured } from '@/lib/supabase'
 
 export default function App() {
@@ -49,6 +50,7 @@ export default function App() {
           <Route path="/applications/:id/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepPage /></AppLayout></ProtectedRoute>} />
           <Route path="/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepIndexPage /></AppLayout></ProtectedRoute>} />
           <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
+          <Route path="/insights" element={<ProtectedRoute><AppLayout><InsightsPage /></AppLayout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
       </AuthProvider>

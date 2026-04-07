@@ -218,6 +218,18 @@ export async function generateApplyChecklist(id: string, force = false) {
   return res.json()
 }
 
+export async function getInsights(): Promise<{
+  skillGaps: { skill: string; frequency: number; avg_score: number; impact: number; jobs: { id: string; title: string; company: string | null; ai_score: number }[] }[]
+  demandedSkills: { skill: string; frequency: number }[]
+  scoreDistribution: { label: string; count: number; jobs: { id: string; title: string; company: string | null; ai_score: number }[] }[]
+  topCompanies: { company: string; count: number; avg_score: number; jobs: { id: string; title: string; ai_score: number }[] }[]
+}> {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/insights`, { headers })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
 export async function updateApplication(id: string, fields: Record<string, unknown>) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/applications/${id}`, {

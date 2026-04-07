@@ -109,6 +109,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <Link to="/dashboard" className="text-sm text-gray-600 hover:text-gray-900">Dashboard</Link>
           <JobsDropdown />
           <ApplicationsDropdown />
+          <Link to="/insights" className="text-sm text-gray-600 hover:text-gray-900">Insights</Link>
           <Link to="/profile" className="text-sm text-gray-600 hover:text-gray-900">Profile</Link>
           <span className="text-sm text-gray-500">{user?.email}</span>
           <button onClick={signOut} className="text-sm text-gray-600 hover:text-gray-900">Sign out</button>

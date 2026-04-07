@@ -8,6 +8,7 @@ import companyRouter from './routes/company'
 import jobsRouter from './routes/jobs'
 import applicationsRouter from './routes/applications'
 import cronRouter from './routes/cron'
+import insightsRouter from './routes/insights'
 
 const app = express()
 app.set('trust proxy', 1)
@@ -41,6 +42,7 @@ app.use('/profile', profileRouter)
 app.use('/company', companyRouter)
 app.use('/jobs', jobsRouter)
 app.use('/applications', applicationsRouter)
+app.use('/insights', insightsRouter)
 
 // 404 handler
 app.use((_req, res) => {
