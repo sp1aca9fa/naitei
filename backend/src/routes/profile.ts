@@ -42,10 +42,12 @@ const UpdateProfileSchema = z.object({
   blocklist_words: z.array(z.string()).optional(),
   // resume corrections
   name: z.string().optional(),
-  skills: z.array(z.string()).optional(),
   experience_years: z.number().int().optional(),
   experience_by_domain: z.array(z.object({ domain: z.string(), years: z.number() })).optional(),
   experience_summary: z.string().optional(),
+  target_role: z.string().optional(),
+  target_role_years: z.number().int().min(0).optional(),
+  experience_level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
   active_resume_version_id: z.string().uuid().optional(),
   display_min_score: z.number().int().min(0).max(100).optional(),
   display_show_skipped: z.boolean().optional(),
@@ -110,14 +112,7 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
     aiRaw = await ai.complete(PARSE_RESUME_SYSTEM, parseResumePrompt(resumeText))
   } catch (err) {
     console.error('[POST /profile/resume] AI call failed:', err)
-    const msg = err instanceof Error ? err.message : 'AI call failed'
-    const extra: Record<string, unknown> = {}
-    if (err && typeof err === 'object') {
-      const e = err as Record<string, unknown>
-      if (e['status'] !== undefined) extra['status'] = e['status']
-      if (e['errorDetails'] !== undefined) extra['errorDetails'] = e['errorDetails']
-    }
-    return res.status(502).json({ error: msg, ...extra })
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let aiJson: unknown
@@ -125,12 +120,13 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
     aiJson = parseAIJson(aiRaw)
   } catch (err) {
     console.error('[POST /profile/resume] JSON parse failed. Raw AI output:', aiRaw)
-    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 500) })
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = ParsedResumeSchema.safeParse(aiJson)
   if (!validation.success) {
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    console.error('[POST /profile/resume] Validation failed:', validation.error.flatten())
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const parsed2 = validation.data
@@ -145,17 +141,27 @@ router.post('/resume', requireAuth, aiLimiter, upload.single('resume'), async (r
     .single()
 
   const existingVersions: unknown[] = Array.isArray(profile?.resume_versions) ? profile.resume_versions : []
-  const newVersion = { id: versionId, label, text: resumeText, created_at: new Date().toISOString() }
+  const newVersion = {
+    id: versionId,
+    label,
+    text: resumeText,
+    created_at: new Date().toISOString(),
+    skills_matrix: parsed2.skills,
+    cv_analysis: parsed2.cv_analysis,
+  }
 
   const { data, error } = await supabase
     .from('profiles')
     .update({
       raw_resume_text: resumeText,
       name: parsed2.name,
-      skills: parsed2.skills,
+      skills: parsed2.skills.map(s => s.name),
       experience_years: parsed2.experience_years,
       experience_by_domain: parsed2.experience_by_domain,
       experience_summary: parsed2.experience_summary,
+      target_role: parsed2.target_role,
+      target_role_years: parsed2.target_role_years,
+      experience_level: parsed2.experience_level,
       resume_versions: [...existingVersions, newVersion],
       active_resume_version_id: versionId,
     })
@@ -191,23 +197,69 @@ router.post('/resume/preview', requireAuth, aiLimiter, async (req: Request, res:
   try {
     aiRaw = await ai.complete(PARSE_RESUME_SYSTEM, parseResumePrompt(version.text))
   } catch (err) {
-    const msg = err instanceof Error ? err.message : 'AI call failed'
-    return res.status(502).json({ error: msg })
+    console.error('[POST /profile/resume/preview] AI call failed:', err)
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let aiJson: unknown
   try {
     aiJson = parseAIJson(aiRaw)
   } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 500) })
+    console.error('[POST /profile/resume/preview] JSON parse failed. Raw AI output:', aiRaw)
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = ParsedResumeSchema.safeParse(aiJson)
   if (!validation.success) {
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    console.error('[POST /profile/resume/preview] Validation failed:', validation.error.flatten())
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   return res.json({ parsed: validation.data, version_id })
+})
+
+// PATCH /profile/resume/:versionId — update skills_matrix and/or cv_analysis for a stored version
+const UpdateVersionSchema = z.object({
+  skills_matrix: z.array(z.object({
+    name: z.string(),
+    level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
+  })).optional(),
+  cv_analysis: z.string().optional(),
+})
+
+router.patch('/resume/:versionId', requireAuth, async (req: Request, res: Response) => {
+  const { versionId } = req.params
+  const parsed = UpdateVersionSchema.safeParse(req.body)
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.flatten() })
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('resume_versions, active_resume_version_id')
+    .eq('user_id', req.user!.id)
+    .single()
+
+  const versions: unknown[] = Array.isArray(profile?.resume_versions) ? profile.resume_versions : []
+  const idx = versions.findIndex((v: unknown) => (v as { id: string }).id === versionId)
+  if (idx === -1) return res.status(404).json({ error: 'Version not found' })
+
+  const updated = [...versions]
+  updated[idx] = { ...(updated[idx] as object), ...parsed.data }
+
+  const profileUpdates: Record<string, unknown> = { resume_versions: updated }
+  // Keep flat skills cache in sync when editing the active version
+  if (profile?.active_resume_version_id === versionId && parsed.data.skills_matrix) {
+    profileUpdates.skills = parsed.data.skills_matrix.map(s => s.name)
+  }
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(profileUpdates)
+    .eq('user_id', req.user!.id)
+    .select()
+    .single()
+
+  if (error) return res.status(500).json({ error: error.message })
+  return res.json(data)
 })
 
 // DELETE /profile/resume/:versionId — remove a stored version
@@ -232,7 +284,7 @@ router.delete('/resume/:versionId', requireAuth, async (req: Request, res: Respo
   }
 
   const clearResumeFields = remaining.length === 0
-    ? { skills: null, raw_resume_text: null, experience_years: null, experience_by_domain: null, experience_summary: null }
+    ? { skills: null, raw_resume_text: null, experience_years: null, experience_by_domain: null, experience_summary: null, target_role: null, target_role_years: null, experience_level: null }
     : {}
 
   const { data, error } = await supabase

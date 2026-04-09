@@ -174,18 +174,20 @@ router.post('/:id/interview-prep', requireAuth, aiLimiter, async (req: Request, 
       skills: profile.skills ?? [],
     }))
   } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+    console.error('[interview-prep] AI call failed:', err)
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let parsed: unknown
   try { parsed = parseAIJson(raw) } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON' })
+    console.error('[interview-prep] JSON parse failed. Raw:', raw)
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = InterviewPrepSchema.safeParse(parsed)
   if (!validation.success) {
     console.error('[interview-prep] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const now = new Date().toISOString()
@@ -232,16 +234,21 @@ router.post('/:id/cover-letter', requireAuth, aiLimiter, async (req: Request, re
       skills: profile.skills ?? [],
     }))
   } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+    console.error('[cover-letter] AI call failed:', err)
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let parsed: unknown
   try { parsed = parseAIJson(raw) } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON' })
+    console.error('[cover-letter] JSON parse failed. Raw:', raw)
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = CoverLetterSchema.safeParse(parsed)
-  if (!validation.success) return res.status(502).json({ error: 'AI response failed validation' })
+  if (!validation.success) {
+    console.error('[cover-letter] Validation failed:', validation.error.flatten())
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
+  }
 
   const now = new Date().toISOString()
   await supabase.from('applications').update({ cover_letter: validation.data.text, cover_letter_generated_at: now }).eq('id', req.params.id).eq('user_id', req.user!.id)
@@ -294,18 +301,20 @@ router.post('/:id/apply-checklist', requireAuth, aiLimiter, async (req: Request,
       resumeText: resumeText.slice(0, 3000),
     }))
   } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+    console.error('[apply-checklist] AI call failed:', err)
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let parsed: unknown
   try { parsed = parseAIJson(raw) } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON' })
+    console.error('[apply-checklist] JSON parse failed. Raw:', raw)
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = ApplyChecklistSchema.safeParse(parsed)
   if (!validation.success) {
     console.error('[apply-checklist] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const now = new Date().toISOString()
@@ -356,18 +365,20 @@ router.post('/:id/resume-optimization', requireAuth, aiLimiter, async (req: Requ
       resumeText,
     }))
   } catch (err) {
-    return res.status(502).json({ error: err instanceof Error ? err.message : 'AI call failed' })
+    console.error('[resume-optimization] AI call failed:', err)
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let parsed: unknown
   try { parsed = parseAIJson(raw) } catch {
-    return res.status(502).json({ error: 'AI returned invalid JSON' })
+    console.error('[resume-optimization] JSON parse failed. Raw:', raw)
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = ResumeOptimizationSchema.safeParse(parsed)
   if (!validation.success) {
     console.error('[resume-optimization] Validation failed.\nRaw:', raw, '\nErrors:', JSON.stringify(validation.error.flatten(), null, 2))
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const now = new Date().toISOString()

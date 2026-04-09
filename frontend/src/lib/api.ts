@@ -66,6 +66,17 @@ export async function previewResumeVersion(versionId: string) {
   return res.json()
 }
 
+export async function updateResumeVersion(versionId: string, data: { skills_matrix?: { name: string; level: number }[]; cv_analysis?: string }) {
+  const headers = await authHeaders()
+  const res = await fetch(`${API_URL}/profile/resume/${versionId}`, {
+    method: 'PATCH',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) await throwError(res)
+  return res.json()
+}
+
 export async function deleteResumeVersion(versionId: string) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/profile/resume/${versionId}`, {

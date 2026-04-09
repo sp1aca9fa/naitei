@@ -83,8 +83,7 @@ router.post('/research', requireAuth, companyLimiter, async (req: Request, res: 
     aiRaw = await ai.complete(COMPANY_RESEARCH_SYSTEM, companyResearchPrompt(company_name, job_title))
   } catch (err) {
     console.error('[POST /company/research] AI call failed:', err)
-    const msg = err instanceof Error ? err.message : 'AI call failed'
-    return res.status(502).json({ error: msg })
+    return res.status(502).json({ error: 'AI service is temporarily unavailable. Please try again.' })
   }
 
   let aiJson: unknown
@@ -92,12 +91,13 @@ router.post('/research', requireAuth, companyLimiter, async (req: Request, res: 
     aiJson = parseAIJson(aiRaw)
   } catch {
     console.error('[POST /company/research] JSON parse failed. Raw AI output:', aiRaw)
-    return res.status(502).json({ error: 'AI returned invalid JSON', raw: aiRaw.slice(0, 500) })
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   const validation = CompanyResearchSchema.safeParse(aiJson)
   if (!validation.success) {
-    return res.status(502).json({ error: 'AI response failed validation', details: validation.error.flatten() })
+    console.error('[POST /company/research] Validation failed:', validation.error.flatten())
+    return res.status(502).json({ error: 'AI returned an unexpected response. Please try again.' })
   }
 
   // Save to DB for future lookups — upsert so concurrent requests for the same company don't

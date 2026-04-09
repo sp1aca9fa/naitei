@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { getProfile, updateProfile, uploadResume, previewResumeVersion, deleteResumeVersion } from '@/lib/api'
+import { getProfile, updateProfile, uploadResume, previewResumeVersion, deleteResumeVersion, updateResumeVersion } from '@/lib/api'
 
 interface ScoreWeights {
   skills: number
@@ -14,11 +14,42 @@ interface DomainEntry {
   years: number
 }
 
+interface SkillEntry {
+  name: string
+  level: 1 | 2 | 3 | 4 | 5
+}
+
+const LEVEL_LABELS: Record<number, string> = {
+  1: 'Exposure',
+  2: 'Foundational',
+  3: 'Working',
+  4: 'Proficient',
+  5: 'Expert',
+}
+
+const LEVEL_DESCRIPTIONS: Record<number, string> = {
+  1: 'Tutorials, read docs, hello world',
+  2: 'Bootcamp, structured course, basic projects',
+  3: 'Built real things independently, ~1-3 years active use',
+  4: 'Complex production work, can mentor others, ~3-5 years',
+  5: 'Deep mastery, leads/architects, 5+ years',
+}
+
+const LEVEL_COLORS: Record<number, string> = {
+  1: 'bg-gray-100 text-gray-600',
+  2: 'bg-blue-50 text-blue-700',
+  3: 'bg-indigo-50 text-indigo-700',
+  4: 'bg-violet-50 text-violet-700',
+  5: 'bg-purple-100 text-purple-800',
+}
+
 interface ResumeVersion {
   id: string
   label: string
   text: string
   created_at: string
+  skills_matrix?: SkillEntry[]
+  cv_analysis?: string
 }
 
 interface Profile {
@@ -32,6 +63,9 @@ interface Profile {
   experience_years: number | null
   experience_by_domain: DomainEntry[] | null
   experience_summary: string | null
+  target_role: string | null
+  target_role_years: number | null
+  experience_level: number | null
   score_weights: ScoreWeights | null
   blocklist_words: string[] | null
   active_resume_version_id: string | null
@@ -51,13 +85,57 @@ interface Profile {
 
 interface ReviewState {
   name: string
-  skills: string[]
+  skills_matrix: SkillEntry[]
+  cv_analysis: string
   experience_years: number
   experience_by_domain: DomainEntry[]
   experience_summary: string
+  target_role: string
+  target_role_years: number
+  experience_level: 1 | 2 | 3 | 4 | 5
   oldProfile: Profile | null
   isManualEdit?: boolean
-  versionId?: string  // set when loading an old version; save will make it active
+  versionId?: string       // set when loading an old version; save will make it active
+  editingVersionId: string | null  // version whose skills_matrix/cv_analysis to update
+}
+
+function LevelTooltip() {
+  return (
+    <div className="absolute z-10 left-0 top-full mt-1 w-72 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+      <p className="font-semibold text-gray-700 mb-2">Skill level guide</p>
+      <table className="w-full border-collapse">
+        <tbody>
+          {[1,2,3,4,5].map(l => (
+            <tr key={l} className="border-t border-gray-100 first:border-0">
+              <td className="py-1 pr-2 font-medium text-gray-800 whitespace-nowrap">{l} — {LEVEL_LABELS[l]}</td>
+              <td className="py-1 text-gray-500">{LEVEL_DESCRIPTIONS[l]}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+function SkillLevelSelector({ level, onChange }: { level: number; onChange: (l: 1|2|3|4|5) => void }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  return (
+    <div className="relative flex items-center gap-0.5" onMouseLeave={() => setShowTooltip(false)}>
+      {[1,2,3,4,5].map(l => (
+        <button
+          key={l}
+          type="button"
+          onClick={() => onChange(l as 1|2|3|4|5)}
+          onMouseEnter={() => setShowTooltip(true)}
+          title={`${LEVEL_LABELS[l]}: ${LEVEL_DESCRIPTIONS[l]}`}
+          className={`text-xs px-2 py-0.5 rounded font-medium border transition-colors ${level === l ? LEVEL_COLORS[l] + ' border-transparent' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400'}`}
+        >
+          {l}
+        </button>
+      ))}
+      {showTooltip && <LevelTooltip />}
+    </div>
+  )
 }
 
 const DEFAULT_WEIGHTS: ScoreWeights = { skills: 30, language: 25, company: 20, location: 15, growth: 10 }
@@ -71,7 +149,7 @@ export function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [uploadMsg, setUploadMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [review, setReview] = useState<ReviewState | null>(null)
-  const [skillInput, setSkillInput] = useState('')
+  const [newSkillInput, setNewSkillInput] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [displayMinScore, setDisplayMinScore] = useState(50)
   const [displayShowSkipped, setDisplayShowSkipped] = useState(false)
@@ -207,11 +285,16 @@ export function ProfilePage() {
       setProfile(res.profile)
       setReview({
         name: res.parsed.name ?? '',
-        skills: res.parsed.skills ?? [],
+        skills_matrix: res.parsed.skills ?? [],
+        cv_analysis: res.parsed.cv_analysis ?? '',
         experience_years: res.parsed.experience_years ?? 0,
         experience_by_domain: res.parsed.experience_by_domain ?? [],
         experience_summary: res.parsed.experience_summary ?? '',
+        target_role: res.parsed.target_role ?? '',
+        target_role_years: res.parsed.target_role_years ?? 0,
+        experience_level: (res.parsed.experience_level ?? 1) as 1|2|3|4|5,
         oldProfile,
+        editingVersionId: res.version_id ?? null,
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Upload failed' })
@@ -227,13 +310,21 @@ export function ProfilePage() {
     try {
       const body: Record<string, unknown> = {
         name: review.name,
-        skills: review.skills,
         experience_years: review.experience_years,
         experience_by_domain: review.experience_by_domain,
         experience_summary: review.experience_summary,
+        target_role: review.target_role,
+        target_role_years: review.target_role_years,
+        experience_level: review.experience_level,
       }
       if (review.versionId) body.active_resume_version_id = review.versionId
       const updated = await updateProfile(body)
+      if (review.editingVersionId) {
+        await updateResumeVersion(review.editingVersionId, {
+          skills_matrix: review.skills_matrix,
+          cv_analysis: review.cv_analysis,
+        })
+      }
       setProfile(updated)
       setReview(null)
     } catch (err) {
@@ -250,10 +341,12 @@ export function ProfilePage() {
       const old = review.oldProfile
       const updated = await updateProfile({
         name: old.name ?? '',
-        skills: old.skills ?? [],
         experience_years: old.experience_years ?? 0,
         experience_by_domain: old.experience_by_domain ?? [],
         experience_summary: old.experience_summary ?? '',
+        target_role: old.target_role ?? '',
+        target_role_years: old.target_role_years ?? 0,
+        experience_level: (old.experience_level ?? 1) as 1|2|3|4|5,
       })
       setProfile(updated)
       setReview(null)
@@ -266,6 +359,26 @@ export function ProfilePage() {
 
   async function handleLoadVersion(versionId: string) {
     const oldProfile = profile
+    // Try using stored skills_matrix/cv_analysis first (no AI call needed)
+    const storedVersion = profile?.resume_versions?.find(v => v.id === versionId)
+    if (storedVersion?.skills_matrix) {
+      setReview({
+        name: oldProfile?.name ?? '',
+        skills_matrix: storedVersion.skills_matrix,
+        cv_analysis: storedVersion.cv_analysis ?? '',
+        experience_years: oldProfile?.experience_years ?? 0,
+        experience_by_domain: oldProfile?.experience_by_domain ?? [],
+        experience_summary: oldProfile?.experience_summary ?? '',
+        target_role: oldProfile?.target_role ?? '',
+        target_role_years: oldProfile?.target_role_years ?? 0,
+        experience_level: ((oldProfile?.experience_level ?? 1) as 1|2|3|4|5),
+        oldProfile,
+        versionId,
+        editingVersionId: versionId,
+      })
+      return
+    }
+    // Fallback: re-run AI for older versions that pre-date skills_matrix
     setUploading(true)
     setUploadMsg(null)
     setReview(null)
@@ -273,12 +386,17 @@ export function ProfilePage() {
       const res = await previewResumeVersion(versionId)
       setReview({
         name: res.parsed.name ?? '',
-        skills: res.parsed.skills ?? [],
+        skills_matrix: res.parsed.skills ?? [],
+        cv_analysis: res.parsed.cv_analysis ?? '',
         experience_years: res.parsed.experience_years ?? 0,
         experience_by_domain: res.parsed.experience_by_domain ?? [],
         experience_summary: res.parsed.experience_summary ?? '',
+        target_role: res.parsed.target_role ?? '',
+        target_role_years: res.parsed.target_role_years ?? 0,
+        experience_level: ((res.parsed.experience_level ?? 1) as 1|2|3|4|5),
         oldProfile,
         versionId,
+        editingVersionId: versionId,
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to load version' })
@@ -296,13 +414,6 @@ export function ProfilePage() {
       setConfirmDeleteId(null)
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Delete failed' })
     }
-  }
-
-  function addReviewSkill() {
-    const s = skillInput.trim()
-    if (!s || !review || review.skills.includes(s)) return
-    setReview({ ...review, skills: [...review.skills, s] })
-    setSkillInput('')
   }
 
   function addBlockword() {
@@ -326,44 +437,87 @@ export function ProfilePage() {
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <h2 className="text-lg font-semibold text-gray-800">Resume</h2>
 
-        {profile?.active_resume_version_id && !review && (
-          <div className="text-sm text-gray-600">
-            <div className="flex items-center justify-between mb-1">
-              <p className="font-medium text-gray-800">{profile.name ?? 'Name not detected'}</p>
-              <button
-                onClick={() => setReview({
-                  name: profile.name ?? '',
-                  skills: profile.skills ?? [],
-                  experience_years: profile.experience_years ?? 0,
-                  experience_by_domain: profile.experience_by_domain ?? [],
-                  experience_summary: profile.experience_summary ?? '',
-                  oldProfile: profile,
-                  isManualEdit: true,
-                })}
-                className="text-xs px-3 py-1 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors"
-              >Edit</button>
-            </div>
-            {profile.experience_years != null && (
-              <p>{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} experience total</p>
-            )}
-            {profile.experience_by_domain && profile.experience_by_domain.length > 0 && (
-              <ul className="mt-1 space-y-0.5">
-                {profile.experience_by_domain.map(d => (
-                  <li key={d.domain} className="text-xs text-gray-500">
-                    {d.domain}: {d.years} year{d.years !== 1 ? 's' : ''}
-                  </li>
-                ))}
-              </ul>
-            )}
-            {profile.skills && profile.skills.length > 0 && (
-              <div className="flex flex-wrap gap-1 mt-2">
-                {profile.skills.map(s => (
-                  <span key={s} className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full">{s}</span>
-                ))}
+        {profile?.active_resume_version_id && !review && (() => {
+          const activeVersion = profile.resume_versions?.find(v => v.id === profile.active_resume_version_id)
+          return (
+            <div className="text-sm text-gray-600 space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-gray-800">{profile.name ?? 'Name not detected'}</p>
+                <button
+                  onClick={() => setReview({
+                    name: profile.name ?? '',
+                    skills_matrix: activeVersion?.skills_matrix ?? [],
+                    cv_analysis: activeVersion?.cv_analysis ?? '',
+                    experience_years: profile.experience_years ?? 0,
+                    experience_by_domain: profile.experience_by_domain ?? [],
+                    experience_summary: profile.experience_summary ?? '',
+                    target_role: profile.target_role ?? '',
+                    target_role_years: profile.target_role_years ?? 0,
+                    experience_level: ((profile.experience_level ?? 1) as 1|2|3|4|5),
+                    oldProfile: profile,
+                    isManualEdit: true,
+                    editingVersionId: profile.active_resume_version_id,
+                  })}
+                  className="text-xs px-3 py-1 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors"
+                >Edit</button>
               </div>
-            )}
-          </div>
-        )}
+
+              {/* Target role + experience level */}
+              {profile.target_role && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium text-gray-800">{profile.target_role}</span>
+                  {profile.experience_level != null && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LEVEL_COLORS[profile.experience_level]}`}>
+                      {LEVEL_LABELS[profile.experience_level]}
+                    </span>
+                  )}
+                  {profile.target_role_years != null && (
+                    <span className="text-xs text-gray-400">{profile.target_role_years} yr{profile.target_role_years !== 1 ? 's' : ''} in field</span>
+                  )}
+                </div>
+              )}
+
+              {/* Career breakdown */}
+              {profile.experience_years != null && (
+                <p className="text-xs text-gray-500">{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} total experience</p>
+              )}
+              {profile.experience_by_domain && profile.experience_by_domain.length > 0 && (
+                <ul className="space-y-0.5">
+                  {profile.experience_by_domain.map(d => (
+                    <li key={d.domain} className="text-xs text-gray-500">
+                      {d.domain}: {d.years} yr{d.years !== 1 ? 's' : ''}
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* AI CV analysis */}
+              {activeVersion?.cv_analysis && (
+                <p className="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-3">{activeVersion.cv_analysis}</p>
+              )}
+
+              {/* Skills matrix — 2-column grid */}
+              {activeVersion?.skills_matrix && activeVersion.skills_matrix.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-gray-600 mb-1.5">Skills</p>
+                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                    {activeVersion.skills_matrix.map(s => (
+                      <div key={s.name} className="flex items-center justify-between gap-1 min-w-0">
+                        <span className="text-xs text-gray-800 truncate">{s.name}</span>
+                        <span
+                          title={`${LEVEL_LABELS[s.level]}: ${LEVEL_DESCRIPTIONS[s.level]}`}
+                          className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap flex-shrink-0 ${LEVEL_COLORS[s.level]}`}
+                        >
+                          {LEVEL_LABELS[s.level]}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )
+        })()}
 
         {/* Review panel */}
         {review && (
@@ -450,51 +604,123 @@ export function ProfilePage() {
               )}
             </div>
 
-            {/* Skills */}
+            {/* Target role */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">Target role <span className="text-gray-400 font-normal">(AI inferred — edit if incorrect)</span></label>
+              <input
+                type="text"
+                value={review.target_role}
+                onChange={e => setReview({ ...review, target_role: e.target.value })}
+                placeholder="e.g. Software Engineer"
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+
+            {/* Years in target role + experience level */}
+            <div className="flex gap-4 flex-wrap">
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Years in target role</label>
+                <input
+                  type="number"
+                  min={0}
+                  value={review.target_role_years}
+                  onChange={e => setReview({ ...review, target_role_years: Math.max(0, Number(e.target.value)) })}
+                  className="w-24 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-gray-600">Level in target role</label>
+                <SkillLevelSelector
+                  level={review.experience_level}
+                  onChange={l => setReview({ ...review, experience_level: l })}
+                />
+                <p className="text-xs text-gray-400">{LEVEL_LABELS[review.experience_level]}: {LEVEL_DESCRIPTIONS[review.experience_level]}</p>
+              </div>
+            </div>
+
+            {/* Skills matrix */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600">Skills</label>
-              <div className="flex flex-wrap gap-1">
-                {review.skills.map(s => {
-                  const isNew = !review.oldProfile?.skills?.includes(s)
-                  return (
-                    <span
-                      key={s}
-                      className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full ${isNew && review.oldProfile?.active_resume_version_id ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}
-                    >
-                      {s}
+              <label className="text-xs font-medium text-gray-600">Technical skills</label>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+                {review.skills_matrix.map((s, i) => (
+                  <div key={i} className="space-y-0.5 min-w-0">
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="text"
+                        value={s.name}
+                        onChange={e => {
+                          const updated = [...review.skills_matrix]
+                          updated[i] = { ...s, name: e.target.value }
+                          setReview({ ...review, skills_matrix: updated })
+                        }}
+                        className="flex-1 min-w-0 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                      />
                       <button
-                        onClick={() => setReview({ ...review, skills: review.skills.filter(x => x !== s) })}
-                        className="hover:opacity-70 font-bold leading-none"
-                      >x</button>
-                    </span>
-                  )
-                })}
-                {/* Removed skills shown as strikethrough */}
-                {review.oldProfile?.skills?.filter(s => !review.skills.includes(s)).map(s => (
-                  <span key={s} className="inline-flex items-center gap-1 bg-gray-100 text-gray-400 text-xs px-2 py-0.5 rounded-full line-through">
-                    {s}
-                    <button
-                      onClick={() => setReview({ ...review, skills: [...review.skills, s] })}
-                      title="Restore"
-                      className="hover:text-gray-600 font-bold leading-none no-underline"
-                    >+</button>
-                  </span>
+                        onClick={() => setReview({ ...review, skills_matrix: review.skills_matrix.filter((_, j) => j !== i) })}
+                        className="text-xs text-red-400 hover:text-red-600 font-bold flex-shrink-0 leading-none"
+                      >×</button>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="range"
+                        min={1} max={5} step={1}
+                        value={s.level}
+                        onChange={e => {
+                          const updated = [...review.skills_matrix]
+                          updated[i] = { ...s, level: Number(e.target.value) as 1|2|3|4|5 }
+                          setReview({ ...review, skills_matrix: updated })
+                        }}
+                        className="flex-1 h-1 accent-blue-600 cursor-pointer"
+                      />
+                      <span
+                        title={`${LEVEL_LABELS[s.level]}: ${LEVEL_DESCRIPTIONS[s.level]}`}
+                        className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap flex-shrink-0 ${LEVEL_COLORS[s.level]}`}
+                      >
+                        {LEVEL_LABELS[s.level]}
+                      </span>
+                    </div>
+                  </div>
                 ))}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 pt-1">
                 <input
                   type="text"
-                  value={skillInput}
-                  onChange={e => setSkillInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && addReviewSkill()}
+                  value={newSkillInput}
+                  onChange={e => setNewSkillInput(e.target.value)}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') {
+                      const name = newSkillInput.trim()
+                      if (name && !review.skills_matrix.some(s => s.name === name)) {
+                        setReview({ ...review, skills_matrix: [...review.skills_matrix, { name, level: 1 }] })
+                        setNewSkillInput('')
+                      }
+                    }
+                  }}
                   placeholder="Add skill..."
                   className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <button
-                  onClick={addReviewSkill}
+                  onClick={() => {
+                    const name = newSkillInput.trim()
+                    if (name && !review.skills_matrix.some(s => s.name === name)) {
+                      setReview({ ...review, skills_matrix: [...review.skills_matrix, { name, level: 1 }] })
+                      setNewSkillInput('')
+                    }
+                  }}
                   className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium"
                 >Add</button>
               </div>
+            </div>
+
+            {/* CV Analysis */}
+            <div className="space-y-1">
+              <label className="text-xs font-medium text-gray-600">AI analysis <span className="text-gray-400 font-normal">(editable)</span></label>
+              <textarea
+                value={review.cv_analysis}
+                onChange={e => setReview({ ...review, cv_analysis: e.target.value })}
+                rows={3}
+                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              />
             </div>
 
             {/* Actions */}

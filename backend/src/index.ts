@@ -1,4 +1,18 @@
 import 'dotenv/config'
+
+// pdf2json emits noisy warnings about link annotations and unrecognised form fields
+// in any PDF that contains hyperlinks. Filter them globally since they are harmless.
+;(function suppressPdf2jsonNoise() {
+  const PDF2JSON_NOISE = ['NOT valid form element', 'field.type of', 'Setting up fake worker', 'TT: undefined function']
+  const isNoise = (args: unknown[]) => {
+    const msg = String(args[0] ?? '')
+    return PDF2JSON_NOISE.some(s => msg.includes(s))
+  }
+  const origLog = console.log
+  const origWarn = console.warn
+  console.log = (...args) => { if (!isNoise(args)) origLog(...args) }
+  console.warn = (...args) => { if (!isNoise(args)) origWarn(...args) }
+})()
 import express from 'express'
 import cors from 'cors'
 import { apiLimiter } from './middleware/rateLimiter'

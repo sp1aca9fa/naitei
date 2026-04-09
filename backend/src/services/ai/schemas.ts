@@ -1,11 +1,24 @@
 import { z } from 'zod'
 
+const SkillLevelSchema = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)])
+
+export const SkillEntrySchema = z.object({
+  name: z.string(),
+  level: SkillLevelSchema,
+})
+
+export type SkillEntry = z.infer<typeof SkillEntrySchema>
+
 export const ParsedResumeSchema = z.object({
   name: z.string(),
-  skills: z.array(z.string()),
+  skills: z.array(SkillEntrySchema),
   experience_years: z.number().int(),
   experience_by_domain: z.array(z.object({ domain: z.string(), years: z.number() })),
   experience_summary: z.string(),
+  cv_analysis: z.string(),
+  target_role: z.string(),
+  target_role_years: z.number().int().min(0),
+  experience_level: SkillLevelSchema,
   education: z.union([z.string(), z.array(z.string()).transform(a => a.join(', '))]),
   notable_projects: z.array(z.string()),
   languages_spoken: z.array(z.string()),
