@@ -4,7 +4,7 @@ import { getProfile, updateProfile, uploadResume, previewResumeVersion, deleteRe
 interface DomainEntry { domain: string; years: number }
 interface SkillEntry { name: string; level: 1 | 2 | 3 | 4 | 5 }
 
-const LEVEL_LABELS: Record<number, string> = { 1: 'Exposure', 2: 'Foundational', 3: 'Working', 4: 'Proficient', 5: 'Expert' }
+export const LEVEL_LABELS: Record<number, string> = { 1: 'Exposure', 2: 'Foundational', 3: 'Working', 4: 'Proficient', 5: 'Expert' }
 const LEVEL_DESCRIPTIONS: Record<number, string> = {
   1: 'Tutorials, read docs, hello world',
   2: 'Bootcamp, structured course, basic projects',
@@ -12,12 +12,18 @@ const LEVEL_DESCRIPTIONS: Record<number, string> = {
   4: 'Complex production work, can mentor others, ~4-5 years',
   5: 'Deep mastery, leads/architects, 6+ years',
 }
-const LEVEL_COLORS: Record<number, string> = {
+export const LEVEL_COLORS: Record<number, string> = {
   1: 'bg-gray-100 text-gray-600',
   2: 'bg-blue-50 text-blue-700',
   3: 'bg-indigo-50 text-indigo-700',
   4: 'bg-violet-50 text-violet-700',
   5: 'bg-purple-100 text-purple-800',
+}
+
+function notifyResumeStatus(profile: { active_resume_version_id: string | null } | null) {
+  window.dispatchEvent(new CustomEvent('resume-status-changed', {
+    detail: { hasResume: !!profile?.active_resume_version_id },
+  }))
 }
 
 interface ResumeVersion {
@@ -59,18 +65,28 @@ function LevelTooltip() {
   )
 }
 
-function SkillLevelSelector({ level, onChange }: { level: number; onChange: (l: 1|2|3|4|5) => void }) {
+function SkillLevelSelector({ level, onChange, large = false }: { level: number; onChange: (l: 1|2|3|4|5) => void; large?: boolean }) {
   const [showTooltip, setShowTooltip] = useState(false)
+  const btnClass = large ? 'text-sm px-3 py-1.5' : 'text-xs px-2 py-0.5'
   return (
     <div className="relative flex items-center gap-0.5" onMouseLeave={() => setShowTooltip(false)}>
       {[1,2,3,4,5].map(l => (
         <button key={l} type="button" onClick={() => onChange(l as 1|2|3|4|5)} onMouseEnter={() => setShowTooltip(true)}
-          title={`${LEVEL_LABELS[l]}: ${LEVEL_DESCRIPTIONS[l]}`}
-          className={`text-xs px-2 py-0.5 rounded font-medium border transition-colors ${level === l ? LEVEL_COLORS[l] + ' border-transparent' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400'}`}
+          className={`${btnClass} rounded font-medium border transition-colors ${level === l ? LEVEL_COLORS[l] + ' border-transparent' : 'bg-white border-gray-200 text-gray-400 hover:border-gray-400'}`}
         >{l}</button>
       ))}
       {showTooltip && <LevelTooltip />}
     </div>
+  )
+}
+
+function DragHandle() {
+  return (
+    <svg className="w-3 h-3 text-gray-300 flex-shrink-0" viewBox="0 0 12 12" fill="currentColor">
+      <circle cx="3.5" cy="2.5" r="1.2"/><circle cx="8.5" cy="2.5" r="1.2"/>
+      <circle cx="3.5" cy="6" r="1.2"/><circle cx="8.5" cy="6" r="1.2"/>
+      <circle cx="3.5" cy="9.5" r="1.2"/><circle cx="8.5" cy="9.5" r="1.2"/>
+    </svg>
   )
 }
 
@@ -82,6 +98,8 @@ export function ProfileResumePage() {
   const [review, setReview] = useState<ReviewState | null>(null)
   const [newSkillInput, setNewSkillInput] = useState('')
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -98,6 +116,7 @@ export function ProfileResumePage() {
     try {
       const res = await uploadResume(file, file.name)
       setProfile(res.profile)
+      notifyResumeStatus(res.profile)
       setReview({
         name: res.parsed.name ?? '',
         skills_matrix: res.parsed.skills ?? [],
@@ -138,6 +157,7 @@ export function ProfileResumePage() {
         await updateResumeVersion(review.editingVersionId, { skills_matrix: review.skills_matrix, cv_analysis: review.cv_analysis })
       }
       setProfile(updated)
+      notifyResumeStatus(updated)
       setReview(null)
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Save failed' })
@@ -161,6 +181,7 @@ export function ProfileResumePage() {
         experience_level: (old.experience_level ?? 1) as 1|2|3|4|5,
       })
       setProfile(updated)
+      notifyResumeStatus(updated)
       setReview(null)
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Revert failed' })
@@ -215,6 +236,7 @@ export function ProfileResumePage() {
     try {
       const updated = await deleteResumeVersion(versionId)
       setProfile(updated)
+      notifyResumeStatus(updated)
       setConfirmDeleteId(null)
     } catch (err) {
       setConfirmDeleteId(null)
@@ -222,18 +244,53 @@ export function ProfileResumePage() {
     }
   }
 
+  function handleSkillDrop(targetIndex: number) {
+    if (dragIndex === null || dragIndex === targetIndex || !review) return
+    const u = [...review.skills_matrix]
+    const [moved] = u.splice(dragIndex, 1)
+    u.splice(targetIndex, 0, moved)
+    setReview({ ...review, skills_matrix: u })
+    setDragIndex(null)
+    setDragOverIndex(null)
+  }
+
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Resume</h1>
-      <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
+    <div className="max-w-5xl mx-auto px-6 py-8">
+      <h1 className="text-2xl font-bold text-gray-900 mb-6">Resume</h1>
+      <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-5">
 
         {/* Profile summary (read-only) */}
         {profile?.active_resume_version_id && !review && (() => {
           const activeVersion = profile.resume_versions?.find(v => v.id === profile.active_resume_version_id)
           return (
             <div className="text-sm text-gray-600 space-y-3">
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-gray-800">{profile.name ?? 'Name not detected'}</p>
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1 min-w-0">
+                  <p className="font-semibold text-gray-900">{profile.name ?? 'Name not detected'}</p>
+                  {profile.target_role && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-gray-700">{profile.target_role}</span>
+                      {profile.experience_level != null && (
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LEVEL_COLORS[profile.experience_level]}`}>
+                          {LEVEL_LABELS[profile.experience_level]}
+                        </span>
+                      )}
+                      {profile.target_role_years != null && (
+                        <span className="text-xs text-gray-400">{profile.target_role_years} year{profile.target_role_years !== 1 ? 's' : ''} in field</span>
+                      )}
+                    </div>
+                  )}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {profile.experience_by_domain && profile.experience_by_domain.length > 0 && (
+                      <p className="text-xs text-gray-400">
+                        {profile.experience_by_domain.map(d => `${d.domain} (${d.years}y)`).join(' · ')}
+                      </p>
+                    )}
+                    {profile.experience_years != null && (
+                      <p className="text-xs text-gray-400">{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} total</p>
+                    )}
+                  </div>
+                </div>
                 <button
                   onClick={() => setReview({
                     name: profile.name ?? '',
@@ -248,34 +305,9 @@ export function ProfileResumePage() {
                     oldProfile: profile, isManualEdit: true,
                     editingVersionId: profile.active_resume_version_id,
                   })}
-                  className="text-xs px-3 py-1 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors"
+                  className="text-xs px-3 py-1.5 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors flex-shrink-0"
                 >Edit</button>
               </div>
-
-              {profile.target_role && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium text-gray-800">{profile.target_role}</span>
-                  {profile.experience_level != null && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${LEVEL_COLORS[profile.experience_level]}`}>
-                      {LEVEL_LABELS[profile.experience_level]}
-                    </span>
-                  )}
-                  {profile.target_role_years != null && (
-                    <span className="text-xs text-gray-400">{profile.target_role_years} yr{profile.target_role_years !== 1 ? 's' : ''} in field</span>
-                  )}
-                </div>
-              )}
-
-              {profile.experience_years != null && (
-                <p className="text-xs text-gray-500">{profile.experience_years} year{profile.experience_years !== 1 ? 's' : ''} total experience</p>
-              )}
-              {profile.experience_by_domain && profile.experience_by_domain.length > 0 && (
-                <ul className="space-y-0.5">
-                  {profile.experience_by_domain.map(d => (
-                    <li key={d.domain} className="text-xs text-gray-500">{d.domain}: {d.years} yr{d.years !== 1 ? 's' : ''}</li>
-                  ))}
-                </ul>
-              )}
 
               {activeVersion?.cv_analysis && (
                 <p className="text-xs text-gray-500 italic border-l-2 border-gray-200 pl-3">{activeVersion.cv_analysis}</p>
@@ -283,10 +315,10 @@ export function ProfileResumePage() {
 
               {activeVersion?.skills_matrix && activeVersion.skills_matrix.length > 0 && (
                 <div>
-                  <p className="text-xs font-medium text-gray-600 mb-1.5">Skills</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                  <p className="text-xs font-medium text-gray-500 mb-2">Skills</p>
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-6 gap-y-1.5">
                     {activeVersion.skills_matrix.map(s => (
-                      <div key={s.name} className="flex items-center justify-between gap-1 min-w-0">
+                      <div key={s.name} className="flex items-center justify-between gap-2 min-w-0">
                         <span className="text-xs text-gray-800 truncate">{s.name}</span>
                         <span title={`${LEVEL_LABELS[s.level]}: ${LEVEL_DESCRIPTIONS[s.level]}`}
                           className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap flex-shrink-0 ${LEVEL_COLORS[s.level]}`}>
@@ -303,96 +335,120 @@ export function ProfileResumePage() {
 
         {/* Review / edit panel */}
         {review && (
-          <div className="border border-amber-300 bg-amber-50 rounded-lg p-4 space-y-4">
+          <div className="border border-amber-300 bg-amber-50 rounded-lg p-5 space-y-5">
             <div>
               <p className="font-semibold text-amber-800 text-sm">{review.isManualEdit ? 'Edit profile data' : 'Review extracted data'}</p>
               <p className="text-xs text-amber-700 mt-0.5">{review.isManualEdit ? 'Make your changes and save.' : 'Correct anything that looks wrong, then save.'}</p>
             </div>
 
-            {/* Name */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">Name</label>
-              <input type="text" value={review.name} onChange={e => setReview({ ...review, name: e.target.value })}
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              {review.oldProfile?.name && review.oldProfile.name !== review.name && (
-                <p className="text-xs text-gray-400">Previously: {review.oldProfile.name}</p>
-              )}
-            </div>
-
-            {/* Experience years */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">Total years of experience</label>
-              <input type="number" min={0} value={review.experience_years}
-                onChange={e => setReview({ ...review, experience_years: Math.max(0, Number(e.target.value)) })}
-                className="w-24 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            </div>
-
-            {/* Domain breakdown */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600">Experience breakdown</label>
-              {review.experience_by_domain.map((d, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <input type="text" value={d.domain}
-                    onChange={e => { const u = [...review.experience_by_domain]; u[i] = { ...d, domain: e.target.value }; setReview({ ...review, experience_by_domain: u }) }}
-                    placeholder="Domain"
-                    className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <input type="number" min={0} value={d.years}
-                    onChange={e => { const u = [...review.experience_by_domain]; u[i] = { ...d, years: Math.max(0, Number(e.target.value)) }; setReview({ ...review, experience_by_domain: u, experience_years: u.reduce((s, x) => s + x.years, 0) }) }}
-                    className="w-16 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <span className="text-xs text-gray-500">yrs</span>
-                  <button onClick={() => { const u = review.experience_by_domain.filter((_, j) => j !== i); setReview({ ...review, experience_by_domain: u, experience_years: u.reduce((s, x) => s + x.years, 0) }) }}
-                    className="text-xs text-red-500 hover:text-red-700 font-bold px-1">x</button>
+            {/* Two-column: profile fields */}
+            <div className="flex gap-6">
+              {/* Left: name, target role, years in role, level */}
+              <div className="flex-1 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Name</label>
+                  <input type="text" value={review.name} onChange={e => setReview({ ...review, name: e.target.value })}
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  {review.oldProfile?.name && review.oldProfile.name !== review.name && (
+                    <p className="text-xs text-gray-400">Previously: {review.oldProfile.name}</p>
+                  )}
                 </div>
-              ))}
-              <button onClick={() => setReview({ ...review, experience_by_domain: [...review.experience_by_domain, { domain: '', years: 0 }] })}
-                className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add domain</button>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-gray-600">Target role <span className="text-gray-400 font-normal">(AI inferred)</span></label>
+                  <input type="text" value={review.target_role} onChange={e => setReview({ ...review, target_role: e.target.value })}
+                    placeholder="e.g. Software Engineer"
+                    className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+
+                <div className="flex items-start justify-between">
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center text-xs font-medium text-gray-600 h-5">Years in role</label>
+                    <input type="number" min={0} value={review.target_role_years}
+                      onChange={e => setReview({ ...review, target_role_years: Math.max(0, Number(e.target.value)) })}
+                      className="w-16 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label className="flex items-center text-xs font-medium text-gray-600">
+                      Level in target role: <span className={`inline-flex items-center text-xs px-1.5 py-0.5 rounded font-medium ${LEVEL_COLORS[review.experience_level]}`}>{LEVEL_LABELS[review.experience_level]}</span>
+                    </label>
+                    <SkillLevelSelector level={review.experience_level} onChange={l => setReview({ ...review, experience_level: l })} large />
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: experience breakdown, total experience */}
+              <div className="flex-1 space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-600">Experience breakdown</label>
+                  {review.experience_by_domain.map((d, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <input type="text" value={d.domain}
+                        onChange={e => { const u = [...review.experience_by_domain]; u[i] = { ...d, domain: e.target.value }; setReview({ ...review, experience_by_domain: u }) }}
+                        placeholder="Domain"
+                        className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <input type="number" min={0} value={d.years}
+                        onChange={e => { const u = [...review.experience_by_domain]; u[i] = { ...d, years: Math.max(0, Number(e.target.value)) }; setReview({ ...review, experience_by_domain: u, experience_years: u.reduce((s, x) => s + x.years, 0) }) }}
+                        className="w-14 text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                      <span className="text-xs text-gray-500">yrs</span>
+                      <button onClick={() => { const u = review.experience_by_domain.filter((_, j) => j !== i); setReview({ ...review, experience_by_domain: u, experience_years: u.reduce((s, x) => s + x.years, 0) }) }}
+                        className="text-xs text-red-500 hover:text-red-700 font-bold px-1">x</button>
+                    </div>
+                  ))}
+                  <button onClick={() => setReview({ ...review, experience_by_domain: [...review.experience_by_domain, { domain: '', years: 0 }] })}
+                    className="text-xs text-blue-600 hover:text-blue-800 font-medium">+ Add domain</button>
+                </div>
+
+                <div className="flex items-center gap-2 border-t border-gray-200 pt-2">
+                  <span className="flex-1 text-sm font-medium text-gray-600">Total experience</span>
+                  <input type="number" min={0} value={review.experience_years}
+                    onChange={e => setReview({ ...review, experience_years: Math.max(0, Number(e.target.value)) })}
+                    className="w-14 text-sm border border-gray-300 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <span className="text-xs text-gray-500">yrs</span>
+                  <span className="w-4 flex-shrink-0" />
+                </div>
+              </div>
             </div>
 
-            {/* Target role */}
+            {/* AI analysis — full width */}
             <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">Target role <span className="text-gray-400 font-normal">(AI inferred — edit if incorrect)</span></label>
-              <input type="text" value={review.target_role} onChange={e => setReview({ ...review, target_role: e.target.value })}
-                placeholder="e.g. Software Engineer"
-                className="w-full text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              <label className="text-xs font-medium text-gray-600">AI analysis <span className="text-gray-400 font-normal">(editable)</span></label>
+              <textarea value={review.cv_analysis} onChange={e => setReview({ ...review, cv_analysis: e.target.value })}
+                rows={4} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
             </div>
 
-            {/* Years in target role + experience level */}
-            <div className="flex gap-4 flex-wrap">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-600">Years in target role</label>
-                <input type="number" min={0} value={review.target_role_years}
-                  onChange={e => setReview({ ...review, target_role_years: Math.max(0, Number(e.target.value)) })}
-                  className="w-24 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-gray-600">Level in target role</label>
-                <SkillLevelSelector level={review.experience_level} onChange={l => setReview({ ...review, experience_level: l })} />
-                <p className="text-xs text-gray-400">{LEVEL_LABELS[review.experience_level]}: {LEVEL_DESCRIPTIONS[review.experience_level]}</p>
-              </div>
-            </div>
-
-            {/* Skills matrix — 2-col grid with sliders */}
+            {/* Technical skills — full width */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600">Technical skills</label>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2">
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-medium text-gray-600">Technical skills</label>
+                <span className="relative group">
+                  <span className="text-xs text-gray-400 cursor-help border-b border-dashed border-gray-300">drag to reorder</span>
+                  <span className="pointer-events-none absolute left-0 top-full mt-1.5 z-20 w-52 rounded bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity leading-relaxed">
+                    Order is saved but doesn't affect job match scoring.
+                  </span>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2">
                 {review.skills_matrix.map((s, i) => (
-                  <div key={i} className="space-y-0.5 min-w-0">
+                  <div key={i}
+                    draggable
+                    onDragStart={() => setDragIndex(i)}
+                    onDragOver={e => { e.preventDefault(); setDragOverIndex(i) }}
+                    onDragLeave={() => setDragOverIndex(null)}
+                    onDrop={() => handleSkillDrop(i)}
+                    onDragEnd={() => { setDragIndex(null); setDragOverIndex(null) }}
+                    className={`bg-white rounded-lg p-2 w-[190px] space-y-1.5 cursor-grab active:cursor-grabbing transition-all border
+                      ${dragIndex === i ? 'opacity-40 border-gray-200' : dragOverIndex === i ? 'border-blue-400 shadow-sm' : 'border-gray-200'}`}
+                  >
                     <div className="flex items-center gap-1">
+                      <DragHandle />
                       <input type="text" value={s.name}
                         onChange={e => { const u = [...review.skills_matrix]; u[i] = { ...s, name: e.target.value }; setReview({ ...review, skills_matrix: u }) }}
-                        className="flex-1 min-w-0 text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500" />
+                        className="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50" />
                       <button onClick={() => setReview({ ...review, skills_matrix: review.skills_matrix.filter((_, j) => j !== i) })}
                         className="text-xs text-red-400 hover:text-red-600 font-bold flex-shrink-0 leading-none">×</button>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <input type="range" min={1} max={5} step={1} value={s.level}
-                        onChange={e => { const u = [...review.skills_matrix]; u[i] = { ...s, level: Number(e.target.value) as 1|2|3|4|5 }; setReview({ ...review, skills_matrix: u }) }}
-                        className="flex-1 h-1 accent-blue-600 cursor-pointer" />
-                      <span title={`${LEVEL_LABELS[s.level]}: ${LEVEL_DESCRIPTIONS[s.level]}`}
-                        className={`text-xs px-1.5 py-0.5 rounded font-medium whitespace-nowrap flex-shrink-0 ${LEVEL_COLORS[s.level]}`}>
-                        {LEVEL_LABELS[s.level]}
-                      </span>
-                    </div>
+                    <SkillLevelSelector level={s.level} onChange={l => { const u = [...review.skills_matrix]; u[i] = { ...s, level: l }; setReview({ ...review, skills_matrix: u }) }} />
                   </div>
                 ))}
               </div>
@@ -419,16 +475,8 @@ export function ProfileResumePage() {
               </div>
             </div>
 
-            {/* CV Analysis */}
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-gray-600">AI analysis <span className="text-gray-400 font-normal">(editable)</span></label>
-              <textarea value={review.cv_analysis} onChange={e => setReview({ ...review, cv_analysis: e.target.value })}
-                rows={3} className="w-full text-sm border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none" />
-            </div>
-
-            {/* Actions */}
             {review.versionId && <p className="text-xs text-amber-700">Saving will make this the active version.</p>}
-            <div className="flex flex-wrap gap-2 pt-1">
+            <div className="flex flex-wrap gap-2">
               <button onClick={handleSaveCorrections} disabled={saving}
                 className="text-sm px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium disabled:opacity-50">
                 {saving ? 'Saving...' : 'Save'}
@@ -446,7 +494,7 @@ export function ProfileResumePage() {
         {/* Resume versions list */}
         {profile?.resume_versions && profile.resume_versions.length > 0 && !review && (
           <div className="space-y-1">
-            <p className="text-xs font-medium text-gray-600">Versions</p>
+            <p className="text-xs font-medium text-gray-500">Versions</p>
             {[...profile.resume_versions].reverse().map(v => {
               const isActive = v.id === profile.active_resume_version_id
               const uploadedAt = new Date(v.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
