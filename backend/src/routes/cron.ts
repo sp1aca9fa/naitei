@@ -394,25 +394,89 @@ router.post('/auto-fetch', async (req: Request, res: Response) => {
 
 // --- Daily digest helpers ---
 
-function topJobsDigestHtml(
-  jobs: { id: string; title: string; company: string | null; ai_score: number; ai_recommendation: string | null; url: string | null }[],
-  appUrl: string
-): string {
-  const rows = jobs.map(j => {
-    const rec = j.ai_recommendation === 'apply_now' ? 'Apply now' :
-      j.ai_recommendation === 'apply_with_tailoring' ? 'Apply with tailoring' : ''
-    return `
-    <div style="margin-bottom:16px;padding-bottom:16px;border-bottom:1px solid #f5f5f5;">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
-        <span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;">${j.ai_score}%</span>
-        ${rec ? `<span style="color:#888;font-size:12px;">${rec}</span>` : ''}
+interface DigestData {
+  pipeline: { saved: number; applied: number; interview: number; offer: number }
+  unapplied: { id: string; title: string; company: string | null; ai_score: number; ai_recommendation: string | null; url: string | null }[]
+  pendingCount: number
+  topSkills: { skill: string; count: number }[]
+  lastImport: { remotive: number | null; remoteok: number | null }
+}
+
+function statusDigestHtml(data: DigestData, appUrl: string): string {
+  const { pipeline, unapplied, pendingCount, topSkills, lastImport } = data
+  const totalPipeline = pipeline.saved + pipeline.applied + pipeline.interview + pipeline.offer
+
+  const pipelineSection = `
+    <div style="margin-bottom:28px;">
+      <h2 style="font-size:14px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">Your pipeline</h2>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;">
+        ${(['saved', 'applied', 'interview', 'offer'] as const).map(s => `
+        <div style="background:#f8f8f8;border:1px solid #e5e5e5;border-radius:8px;padding:10px 16px;text-align:center;min-width:72px;">
+          <div style="font-size:22px;font-weight:700;color:#111;">${pipeline[s]}</div>
+          <div style="font-size:11px;color:#888;text-transform:capitalize;margin-top:2px;">${s}</div>
+        </div>`).join('')}
       </div>
-      <strong style="color:#111;font-size:14px;">${j.title}</strong>
-      ${j.company ? `<span style="color:#666;font-size:13px;"> — ${j.company}</span>` : ''}
-      <br>
-      ${j.url ? `<a href="${j.url}" style="color:#2563eb;font-size:12px;text-decoration:none;">View job posting</a>` : ''}
+      ${totalPipeline === 0 ? '<p style="color:#aaa;font-size:13px;margin:12px 0 0;">No applications yet. Start by saving jobs you like.</p>' : ''}
     </div>`
-  }).join('')
+
+  const unappliedSection = unapplied.length === 0 ? '' : `
+    <div style="margin-bottom:28px;">
+      <h2 style="font-size:14px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">High-score jobs you haven't applied to</h2>
+      ${unapplied.map(j => {
+        const rec = j.ai_recommendation === 'apply_now' ? 'Apply now' :
+          j.ai_recommendation === 'apply_with_tailoring' ? 'Apply with tailoring' : ''
+        return `
+      <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #f5f5f5;">
+        <div style="margin-bottom:4px;">
+          <span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;margin-right:6px;">${j.ai_score}%</span>
+          ${rec ? `<span style="color:#888;font-size:12px;">${rec}</span>` : ''}
+        </div>
+        <strong style="color:#111;font-size:14px;">${j.title}</strong>
+        ${j.company ? `<span style="color:#666;font-size:13px;"> — ${j.company}</span>` : ''}
+        <br>
+        ${j.url ? `<a href="${j.url}" style="color:#2563eb;font-size:12px;text-decoration:none;">View posting</a>` : `<a href="${appUrl}/jobs" style="color:#2563eb;font-size:12px;text-decoration:none;">View in dashboard</a>`}
+      </div>`
+      }).join('')}
+    </div>`
+
+  const pendingSection = pendingCount === 0 ? '' : `
+    <div style="margin-bottom:28px;">
+      <h2 style="font-size:14px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em;margin:0 0 8px;">Unscored jobs</h2>
+      <p style="color:#444;font-size:14px;margin:0 0 10px;">
+        You have <strong>${pendingCount}</strong> job${pendingCount !== 1 ? 's' : ''} waiting to be scored. Score them to see how well they match your profile.
+      </p>
+      <a href="${appUrl}/jobs" style="color:#2563eb;font-size:13px;text-decoration:none;">Go to My Jobs &rarr;</a>
+    </div>`
+
+  const skillsSection = topSkills.length === 0 ? '' : `
+    <div style="margin-bottom:28px;">
+      <h2 style="font-size:14px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">Top skills to learn</h2>
+      <p style="color:#666;font-size:13px;margin:0 0 12px;">Skills most frequently missing across your scored jobs:</p>
+      ${topSkills.map(s => `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+        <span style="font-size:14px;color:#111;font-weight:500;">${s.skill}</span>
+        <span style="font-size:12px;color:#888;">missing in ${s.count} job${s.count !== 1 ? 's' : ''}</span>
+      </div>`).join('')}
+      <a href="${appUrl}/insights" style="color:#2563eb;font-size:13px;text-decoration:none;display:inline-block;margin-top:4px;">View full skill gap analysis &rarr;</a>
+    </div>`
+
+  function importAge(days: number | null): string {
+    if (days === null) return 'never'
+    if (days === 0) return 'today'
+    if (days === 1) return 'yesterday'
+    return `${days} days ago`
+  }
+  const importSection = `
+    <div style="margin-bottom:28px;">
+      <h2 style="font-size:14px;font-weight:600;color:#555;text-transform:uppercase;letter-spacing:.05em;margin:0 0 12px;">Import more jobs</h2>
+      <p style="color:#666;font-size:13px;margin:0 0 8px;">
+        Last import from <strong>Remotive</strong>: ${importAge(lastImport.remotive)} &nbsp;&middot;&nbsp;
+        <strong>RemoteOK</strong>: ${importAge(lastImport.remoteok)}
+      </p>
+      <a href="${appUrl}/jobs" style="color:#2563eb;font-size:13px;text-decoration:none;">Import new jobs &rarr;</a>
+    </div>`
+
+  const body = [pipelineSection, unappliedSection, pendingSection, skillsSection, importSection].join('')
 
   return `
 <!DOCTYPE html>
@@ -420,20 +484,18 @@ function topJobsDigestHtml(
 <head><meta charset="utf-8"></head>
 <body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f9f9f9;margin:0;padding:32px 16px;">
   <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e5e5e5;padding:32px;">
-    <h1 style="font-size:20px;color:#111;margin:0 0 8px;">Top jobs for you today</h1>
-    <p style="color:#666;font-size:14px;margin:0 0 24px;">
-      ${jobs.length} new job${jobs.length !== 1 ? 's' : ''} scored above your threshold.
-    </p>
+    <h1 style="font-size:20px;color:#111;margin:0 0 8px;">Your daily job hunt summary</h1>
+    <p style="color:#666;font-size:14px;margin:0 0 24px;">Here's where things stand today.</p>
     <hr style="border:none;border-top:1px solid #f0f0f0;margin:0 0 24px;">
-    ${rows}
+    ${body}
     <div style="margin-top:4px;">
-      <a href="${appUrl}/jobs"
+      <a href="${appUrl}/applications"
          style="display:inline-block;background:#2563eb;color:#fff;text-decoration:none;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:500;">
-        View all jobs
+        Open Applications
       </a>
     </div>
     <p style="color:#bbb;font-size:11px;margin-top:24px;">
-      You're receiving this because you have email notifications enabled in your Naitei profile.
+      You're receiving this because you enabled the daily digest in your Naitei profile.
       <a href="${appUrl}/profile" style="color:#bbb;">Manage settings</a>
     </p>
   </div>
@@ -441,48 +503,118 @@ function topJobsDigestHtml(
 </html>`
 }
 
-// POST /cron/daily-digest — send top newly-scored jobs above threshold to users
-// Called by Vercel Cron after auto-fetch. Sends jobs scored in last 24h above display_min_score.
-router.post('/daily-digest', async (req: Request, res: Response) => {
-  if (!verifyCronSecret(req, res)) return
+// Shared logic — also called on server startup for catch-up sends
+export async function runDailyDigest(): Promise<{ sent: number; skipped: number }> {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('user_id, display_min_score')
-    .eq('email_notifications_enabled', true)
+    .select('user_id')
+    .eq('notify_digest_enabled', true)
+    .or(`last_digest_sent_at.is.null,last_digest_sent_at.lt.${cutoff}`)
 
-  if (profilesError) return res.status(500).json({ error: profilesError.message })
-  if (!profiles || profiles.length === 0) return res.json({ sent: 0, skipped: 0 })
+  if (profilesError) {
+    console.error('[cron/daily-digest] Failed to fetch profiles:', profilesError.message)
+    return { sent: 0, skipped: 0 }
+  }
+  if (!profiles || profiles.length === 0) return { sent: 0, skipped: 0 }
 
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
   let sent = 0
   let skipped = 0
 
   for (const profile of profiles) {
-    const threshold = profile.display_min_score ?? 60
+    const userId = profile.user_id
 
-    const { data: topJobs } = await supabase
+    // 1. Pipeline counts + actioned job IDs
+    const { data: apps } = await supabase
+      .from('applications')
+      .select('status, job_id')
+      .eq('user_id', userId)
+
+    const pipeline = { saved: 0, applied: 0, interview: 0, offer: 0 }
+    const actioned = new Set<string>()
+    for (const app of apps ?? []) {
+      if (app.status in pipeline) pipeline[app.status as keyof typeof pipeline]++
+      if (['applied', 'interview', 'offer'].includes(app.status)) actioned.add(app.job_id)
+    }
+
+    // 2. High-score jobs not yet actioned (>= 70)
+    const { data: highScoreJobs } = await supabase
       .from('jobs')
       .select('id, title, company, ai_score, ai_recommendation, url')
-      .eq('user_id', profile.user_id)
+      .eq('user_id', userId)
       .eq('scoring_status', 'scored')
-      .gte('ai_score', threshold)
-      .gte('scored_at', cutoff)
+      .gte('ai_score', 70)
       .order('ai_score', { ascending: false })
-      .limit(10)
+      .limit(20)
 
-    if (!topJobs || topJobs.length === 0) { skipped++; continue }
+    const unapplied = (highScoreJobs ?? []).filter(j => !actioned.has(j.id)).slice(0, 5)
 
-    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(profile.user_id)
+    // 3. Pending unscored count
+    const { count: pendingCount } = await supabase
+      .from('jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('scoring_status', 'pending')
+
+    // 4. Top skill gaps from missing_skills on scored jobs
+    const { data: scoredJobs } = await supabase
+      .from('jobs')
+      .select('missing_skills')
+      .eq('user_id', userId)
+      .eq('scoring_status', 'scored')
+      .not('missing_skills', 'is', null)
+
+    const skillFreq: Record<string, number> = {}
+    for (const job of scoredJobs ?? []) {
+      for (const skill of (job.missing_skills as string[] | null) ?? []) {
+        if (skill) skillFreq[skill] = (skillFreq[skill] ?? 0) + 1
+      }
+    }
+    const topSkills = Object.entries(skillFreq)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([skill, count]) => ({ skill, count }))
+
+    // 5. Last import date per source
+    async function lastImportDays(source: string): Promise<number | null> {
+      const { data } = await supabase
+        .from('jobs')
+        .select('created_at')
+        .eq('user_id', userId)
+        .eq('source', source)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (!data) return null
+      return Math.floor((Date.now() - new Date(data.created_at).getTime()) / 86400000)
+    }
+
+    const [remotiveDays, remoteokDays] = await Promise.all([
+      lastImportDays('remotive'),
+      lastImportDays('remoteok'),
+    ])
+
+    const { data: { user }, error: userError } = await supabase.auth.admin.getUserById(userId)
     const email = user?.email
     if (userError || !email) { skipped++; continue }
 
     try {
       await sendEmail({
         to: email,
-        subject: `${topJobs.length} top job${topJobs.length !== 1 ? 's' : ''} matching your profile today`,
-        html: topJobsDigestHtml(topJobs, APP_URL),
+        subject: 'Your daily job hunt summary',
+        html: statusDigestHtml({
+          pipeline,
+          unapplied,
+          pendingCount: pendingCount ?? 0,
+          topSkills,
+          lastImport: { remotive: remotiveDays, remoteok: remoteokDays },
+        }, APP_URL),
       })
+      await supabase
+        .from('profiles')
+        .update({ last_digest_sent_at: new Date().toISOString() })
+        .eq('user_id', userId)
       sent++
     } catch (err) {
       console.error(`[cron/daily-digest] Failed to send to ${email}:`, err)
@@ -491,7 +623,14 @@ router.post('/daily-digest', async (req: Request, res: Response) => {
   }
 
   console.log(`[cron/daily-digest] sent=${sent} skipped=${skipped}`)
-  return res.json({ sent, skipped })
+  return { sent, skipped }
+}
+
+// POST /cron/daily-digest — send a daily status summary to users with notify_digest_enabled
+router.post('/daily-digest', async (req: Request, res: Response) => {
+  if (!verifyCronSecret(req, res)) return
+  const result = await runDailyDigest()
+  return res.json(result)
 })
 
 export default router

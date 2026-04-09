@@ -58,6 +58,7 @@ const UpdateProfileSchema = z.object({
   notify_applied_days: z.number().int().min(1).max(90).optional(),
   notify_interview_enabled: z.boolean().optional(),
   notify_interview_days: z.number().int().min(1).max(90).optional(),
+  notify_digest_enabled: z.boolean().optional(),
 })
 
 router.patch('/', requireAuth, async (req: Request, res: Response) => {

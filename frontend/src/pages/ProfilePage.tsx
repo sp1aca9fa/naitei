@@ -46,6 +46,7 @@ interface Profile {
   notify_applied_days: number | null
   notify_interview_enabled: boolean | null
   notify_interview_days: number | null
+  notify_digest_enabled: boolean | null
 }
 
 interface ReviewState {
@@ -83,6 +84,7 @@ export function ProfilePage() {
   const [notifyAppliedDays, setNotifyAppliedDays] = useState(7)
   const [notifyInterviewEnabled, setNotifyInterviewEnabled] = useState(true)
   const [notifyInterviewDays, setNotifyInterviewDays] = useState(7)
+  const [notifyDigestEnabled, setNotifyDigestEnabled] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const weightsTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const blocklistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -91,7 +93,7 @@ export function ProfilePage() {
   const lastSavedWeightsRef = useRef<ScoreWeights | null>(null)
   const lastSavedBlocklistRef = useRef<string[] | null>(null)
   const lastSavedDisplayRef = useRef<{ min_score: number; show_skipped: boolean; recent_threshold_hours: number } | null>(null)
-  const lastSavedEmailRef = useRef<{ enabled: boolean; savedEnabled: boolean; savedDays: number; appliedEnabled: boolean; appliedDays: number; interviewEnabled: boolean; interviewDays: number } | null>(null)
+  const lastSavedEmailRef = useRef<{ enabled: boolean; savedEnabled: boolean; savedDays: number; appliedEnabled: boolean; appliedDays: number; interviewEnabled: boolean; interviewDays: number; digestEnabled: boolean } | null>(null)
 
   useEffect(() => {
     getProfile()
@@ -109,7 +111,8 @@ export function ProfilePage() {
         const appliedDays = p.notify_applied_days ?? 7
         const interviewEnabled = p.notify_interview_enabled ?? true
         const interviewDays = p.notify_interview_days ?? 7
-        lastSavedEmailRef.current = { enabled: emailEnabled, savedEnabled, savedDays, appliedEnabled, appliedDays, interviewEnabled, interviewDays }
+        const digestEnabled = p.notify_digest_enabled ?? false
+        lastSavedEmailRef.current = { enabled: emailEnabled, savedEnabled, savedDays, appliedEnabled, appliedDays, interviewEnabled, interviewDays, digestEnabled }
         setEmailNotificationsEnabled(emailEnabled)
         setNotifySavedEnabled(savedEnabled)
         setNotifySavedDays(savedDays)
@@ -117,6 +120,7 @@ export function ProfilePage() {
         setNotifyAppliedDays(appliedDays)
         setNotifyInterviewEnabled(interviewEnabled)
         setNotifyInterviewDays(interviewDays)
+        setNotifyDigestEnabled(digestEnabled)
         setProfile(p)
         setWeights(p.score_weights ?? DEFAULT_WEIGHTS)
         setBlocklist(p.blocklist_words ?? [])
@@ -178,18 +182,18 @@ export function ProfilePage() {
 
   useEffect(() => {
     if (lastSavedEmailRef.current === null) return
-    const current = { enabled: emailNotificationsEnabled, savedEnabled: notifySavedEnabled, savedDays: notifySavedDays, appliedEnabled: notifyAppliedEnabled, appliedDays: notifyAppliedDays, interviewEnabled: notifyInterviewEnabled, interviewDays: notifyInterviewDays }
+    const current = { enabled: emailNotificationsEnabled, savedEnabled: notifySavedEnabled, savedDays: notifySavedDays, appliedEnabled: notifyAppliedEnabled, appliedDays: notifyAppliedDays, interviewEnabled: notifyInterviewEnabled, interviewDays: notifyInterviewDays, digestEnabled: notifyDigestEnabled }
     if (JSON.stringify(current) === JSON.stringify(lastSavedEmailRef.current)) return
     if (emailTimerRef.current) clearTimeout(emailTimerRef.current)
     emailTimerRef.current = setTimeout(async () => {
       try {
-        await updateProfile({ email_notifications_enabled: emailNotificationsEnabled, notify_saved_enabled: notifySavedEnabled, notify_saved_days: notifySavedDays, notify_applied_enabled: notifyAppliedEnabled, notify_applied_days: notifyAppliedDays, notify_interview_enabled: notifyInterviewEnabled, notify_interview_days: notifyInterviewDays })
+        await updateProfile({ email_notifications_enabled: emailNotificationsEnabled, notify_saved_enabled: notifySavedEnabled, notify_saved_days: notifySavedDays, notify_applied_enabled: notifyAppliedEnabled, notify_applied_days: notifyAppliedDays, notify_interview_enabled: notifyInterviewEnabled, notify_interview_days: notifyInterviewDays, notify_digest_enabled: notifyDigestEnabled })
         lastSavedEmailRef.current = current
       } catch { /* silent */ }
     }, 500)
     return () => { if (emailTimerRef.current) clearTimeout(emailTimerRef.current) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [emailNotificationsEnabled, notifySavedEnabled, notifySavedDays, notifyAppliedEnabled, notifyAppliedDays, notifyInterviewEnabled, notifyInterviewDays])
+  }, [emailNotificationsEnabled, notifySavedEnabled, notifySavedDays, notifyAppliedEnabled, notifyAppliedDays, notifyInterviewEnabled, notifyInterviewDays, notifyDigestEnabled])
 
   async function handleResumeUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0]
@@ -714,11 +718,24 @@ export function ProfilePage() {
         <label className="flex items-center gap-3 cursor-pointer">
           <input
             type="checkbox"
+            checked={notifyDigestEnabled}
+            onChange={e => setNotifyDigestEnabled(e.target.checked)}
+            className="w-4 h-4 accent-blue-600"
+          />
+          <div>
+            <span className="text-sm font-medium text-gray-700">Daily job digest</span>
+            <p className="text-xs text-gray-400">Receive a daily email with top newly-scored jobs above your minimum score threshold.</p>
+          </div>
+        </label>
+
+        <label className="flex items-center gap-3 cursor-pointer">
+          <input
+            type="checkbox"
             checked={emailNotificationsEnabled}
             onChange={e => setEmailNotificationsEnabled(e.target.checked)}
             className="w-4 h-4 accent-blue-600"
           />
-          <span className="text-sm font-medium text-gray-700">Enable email notifications</span>
+          <span className="text-sm font-medium text-gray-700">Enable follow-up reminders</span>
         </label>
 
         {emailNotificationsEnabled && (

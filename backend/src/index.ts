@@ -7,7 +7,7 @@ import profileRouter from './routes/profile'
 import companyRouter from './routes/company'
 import jobsRouter from './routes/jobs'
 import applicationsRouter from './routes/applications'
-import cronRouter from './routes/cron'
+import cronRouter, { runDailyDigest } from './routes/cron'
 import insightsRouter from './routes/insights'
 
 const app = express()
@@ -57,6 +57,8 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 app.listen(PORT, () => {
   console.log(`Backend running on http://localhost:${PORT}`)
+  // Send any missed daily digests (skips users whose digest was sent in the last 24h)
+  runDailyDigest().catch(err => console.error('[startup] digest check failed:', err))
 })
 
 export default app
