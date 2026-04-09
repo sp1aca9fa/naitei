@@ -4,7 +4,10 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { AppLayout } from '@/components/AppLayout'
 import { LoginPage } from '@/pages/LoginPage'
 import { DashboardPage } from '@/pages/DashboardPage'
-import { ProfilePage } from '@/pages/ProfilePage'
+import { ProfileResumePage } from '@/pages/ProfileResumePage'
+import { ProfileWeightsPage } from '@/pages/ProfileWeightsPage'
+import { ProfileFiltersPage } from '@/pages/ProfileFiltersPage'
+import { ProfileNotificationsPage } from '@/pages/ProfileNotificationsPage'
 import { AnalyzePage } from '@/pages/AnalyzePage'
 import { MyJobsPage } from '@/pages/MyJobsPage'
 import { JobDetailPage } from '@/pages/JobDetailPage'
@@ -49,7 +52,11 @@ export default function App() {
           <Route path="/optimizations" element={<ProtectedRoute><AppLayout><OptimizationsIndexPage /></AppLayout></ProtectedRoute>} />
           <Route path="/applications/:id/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepPage /></AppLayout></ProtectedRoute>} />
           <Route path="/interview-prep" element={<ProtectedRoute><AppLayout><InterviewPrepIndexPage /></AppLayout></ProtectedRoute>} />
-          <Route path="/profile" element={<ProtectedRoute><AppLayout><ProfilePage /></AppLayout></ProtectedRoute>} />
+          <Route path="/profile" element={<Navigate to="/profile/resume" replace />} />
+          <Route path="/profile/resume" element={<ProtectedRoute><AppLayout><ProfileResumePage /></AppLayout></ProtectedRoute>} />
+          <Route path="/profile/weights" element={<ProtectedRoute><AppLayout><ProfileWeightsPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/profile/filters" element={<ProtectedRoute><AppLayout><ProfileFiltersPage /></AppLayout></ProtectedRoute>} />
+          <Route path="/profile/notifications" element={<ProtectedRoute><AppLayout><ProfileNotificationsPage /></AppLayout></ProtectedRoute>} />
           <Route path="/insights" element={<ProtectedRoute><AppLayout><InsightsPage /></AppLayout></ProtectedRoute>} />
           <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>
