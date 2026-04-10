@@ -225,6 +225,8 @@ const UpdateVersionSchema = z.object({
     level: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4), z.literal(5)]),
   })).optional(),
   cv_analysis: z.string().optional(),
+  key_strengths: z.array(z.string()).optional(),
+  focus_skills: z.array(z.string()).optional(),
 })
 
 router.patch('/resume/:versionId', requireAuth, async (req: Request, res: Response) => {

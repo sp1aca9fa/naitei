@@ -29,6 +29,7 @@ function notifyResumeStatus(profile: { active_resume_version_id: string | null }
 interface ResumeVersion {
   id: string; label: string; text: string; created_at: string
   skills_matrix?: SkillEntry[]; cv_analysis?: string
+  key_strengths?: string[]; focus_skills?: string[]
 }
 
 interface Profile {
@@ -45,6 +46,7 @@ interface ReviewState {
   experience_summary: string; target_role: string; target_role_years: number
   experience_level: 1 | 2 | 3 | 4 | 5; oldProfile: Profile | null
   isManualEdit?: boolean; versionId?: string; editingVersionId: string | null
+  key_strengths: string[]; focus_skills: string[]
 }
 
 function LevelTooltip() {
@@ -90,6 +92,12 @@ function DragHandle() {
   )
 }
 
+function autoKeyStrengths(skills: SkillEntry[]): string[] {
+  if (skills.length === 0) return []
+  const maxLevel = Math.max(...skills.map(s => s.level))
+  return skills.filter(s => s.level === maxLevel).map(s => s.name)
+}
+
 export function ProfileResumePage() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -100,6 +108,8 @@ export function ProfileResumePage() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
+  const [dragPoolSkillName, setDragPoolSkillName] = useState<string | null>(null)
+  const [dragOverSection, setDragOverSection] = useState<'key_strengths' | 'focus_skills' | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -117,9 +127,10 @@ export function ProfileResumePage() {
       const res = await uploadResume(file, file.name)
       setProfile(res.profile)
       notifyResumeStatus(res.profile)
+      const uploadedSkills = res.parsed.skills ?? []
       setReview({
         name: res.parsed.name ?? '',
-        skills_matrix: res.parsed.skills ?? [],
+        skills_matrix: uploadedSkills,
         cv_analysis: res.parsed.cv_analysis ?? '',
         experience_years: res.parsed.experience_years ?? 0,
         experience_by_domain: res.parsed.experience_by_domain ?? [],
@@ -129,6 +140,8 @@ export function ProfileResumePage() {
         experience_level: (res.parsed.experience_level ?? 1) as 1|2|3|4|5,
         oldProfile,
         editingVersionId: res.version_id ?? null,
+        key_strengths: autoKeyStrengths(uploadedSkills),
+        focus_skills: [],
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Upload failed' })
@@ -154,7 +167,12 @@ export function ProfileResumePage() {
       if (review.versionId) body.active_resume_version_id = review.versionId
       const updated = await updateProfile(body)
       if (review.editingVersionId) {
-        await updateResumeVersion(review.editingVersionId, { skills_matrix: review.skills_matrix, cv_analysis: review.cv_analysis })
+        await updateResumeVersion(review.editingVersionId, {
+          skills_matrix: review.skills_matrix,
+          cv_analysis: review.cv_analysis,
+          key_strengths: review.key_strengths,
+          focus_skills: review.focus_skills,
+        })
       }
       setProfile(updated)
       notifyResumeStatus(updated)
@@ -205,6 +223,8 @@ export function ProfileResumePage() {
         target_role_years: oldProfile?.target_role_years ?? 0,
         experience_level: ((oldProfile?.experience_level ?? 1) as 1|2|3|4|5),
         oldProfile, versionId, editingVersionId: versionId,
+        key_strengths: storedVersion.key_strengths ?? autoKeyStrengths(storedVersion.skills_matrix),
+        focus_skills: storedVersion.focus_skills ?? [],
       })
       return
     }
@@ -213,9 +233,10 @@ export function ProfileResumePage() {
     setReview(null)
     try {
       const res = await previewResumeVersion(versionId)
+      const previewSkills = res.parsed.skills ?? []
       setReview({
         name: res.parsed.name ?? '',
-        skills_matrix: res.parsed.skills ?? [],
+        skills_matrix: previewSkills,
         cv_analysis: res.parsed.cv_analysis ?? '',
         experience_years: res.parsed.experience_years ?? 0,
         experience_by_domain: res.parsed.experience_by_domain ?? [],
@@ -224,6 +245,8 @@ export function ProfileResumePage() {
         target_role_years: res.parsed.target_role_years ?? 0,
         experience_level: ((res.parsed.experience_level ?? 1) as 1|2|3|4|5),
         oldProfile, versionId, editingVersionId: versionId,
+        key_strengths: autoKeyStrengths(previewSkills),
+        focus_skills: [],
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to load version' })
@@ -292,19 +315,24 @@ export function ProfileResumePage() {
                   </div>
                 </div>
                 <button
-                  onClick={() => setReview({
-                    name: profile.name ?? '',
-                    skills_matrix: activeVersion?.skills_matrix ?? [],
-                    cv_analysis: activeVersion?.cv_analysis ?? '',
-                    experience_years: profile.experience_years ?? 0,
-                    experience_by_domain: profile.experience_by_domain ?? [],
-                    experience_summary: profile.experience_summary ?? '',
-                    target_role: profile.target_role ?? '',
-                    target_role_years: profile.target_role_years ?? 0,
-                    experience_level: ((profile.experience_level ?? 1) as 1|2|3|4|5),
-                    oldProfile: profile, isManualEdit: true,
-                    editingVersionId: profile.active_resume_version_id,
-                  })}
+                  onClick={() => {
+                    const editSkills = activeVersion?.skills_matrix ?? []
+                    setReview({
+                      name: profile.name ?? '',
+                      skills_matrix: editSkills,
+                      cv_analysis: activeVersion?.cv_analysis ?? '',
+                      experience_years: profile.experience_years ?? 0,
+                      experience_by_domain: profile.experience_by_domain ?? [],
+                      experience_summary: profile.experience_summary ?? '',
+                      target_role: profile.target_role ?? '',
+                      target_role_years: profile.target_role_years ?? 0,
+                      experience_level: ((profile.experience_level ?? 1) as 1|2|3|4|5),
+                      oldProfile: profile, isManualEdit: true,
+                      editingVersionId: profile.active_resume_version_id,
+                      key_strengths: activeVersion?.key_strengths ?? autoKeyStrengths(editSkills),
+                      focus_skills: activeVersion?.focus_skills ?? [],
+                    })
+                  }}
                   className="text-xs px-3 py-1.5 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors flex-shrink-0"
                 >Edit</button>
               </div>
@@ -325,6 +353,44 @@ export function ProfileResumePage() {
                           {LEVEL_LABELS[s.level]}
                         </span>
                       </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeVersion?.key_strengths && activeVersion.key_strengths.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <p className="text-xs font-medium text-gray-500">Key Strengths</p>
+                    <span className="relative group">
+                      <span className="w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[10px] flex items-center justify-center cursor-help font-medium select-none">?</span>
+                      <span className="pointer-events-none absolute left-0 top-full mt-1.5 z-20 w-64 rounded bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity leading-relaxed">
+                        The skills you're most experienced in. The AI uses these to assess how well your background fits a role, regardless of where you want to take your career.
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeVersion.key_strengths.map(name => (
+                      <span key={name} className="text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2.5 py-0.5">{name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {activeVersion?.focus_skills && activeVersion.focus_skills.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <p className="text-xs font-medium text-gray-500">Focus Skills</p>
+                    <span className="relative group">
+                      <span className="w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[10px] flex items-center justify-center cursor-help font-medium select-none">?</span>
+                      <span className="pointer-events-none absolute left-0 top-full mt-1.5 z-20 w-72 rounded bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity leading-relaxed">
+                        Skills you want to build your career around going forward. Even if you're stronger elsewhere, the AI will favor jobs that put these to use. Great for signaling a stack transition -- for example, strong in Ruby on Rails but want to move to JavaScript.
+                      </span>
+                    </span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeVersion.focus_skills.map(name => (
+                      <span key={name} className="flex items-center gap-1 text-xs bg-teal-50 text-teal-800 border border-teal-200 rounded-full px-2.5 py-0.5">
+                        <span className="text-teal-400 text-sm leading-none">★</span>{name}
+                      </span>
                     ))}
                   </div>
                 </div>
@@ -429,28 +495,38 @@ export function ProfileResumePage() {
                 </span>
               </div>
               <div className="flex flex-wrap gap-2">
-                {review.skills_matrix.map((s, i) => (
-                  <div key={i}
-                    draggable
-                    onDragStart={() => setDragIndex(i)}
-                    onDragOver={e => { e.preventDefault(); setDragOverIndex(i) }}
-                    onDragLeave={() => setDragOverIndex(null)}
-                    onDrop={() => handleSkillDrop(i)}
-                    onDragEnd={() => { setDragIndex(null); setDragOverIndex(null) }}
-                    className={`bg-white rounded-lg p-2 w-[190px] space-y-1.5 cursor-grab active:cursor-grabbing transition-all border
-                      ${dragIndex === i ? 'opacity-40 border-gray-200' : dragOverIndex === i ? 'border-blue-400 shadow-sm' : 'border-gray-200'}`}
-                  >
-                    <div className="flex items-center gap-1">
-                      <DragHandle />
-                      <input type="text" value={s.name}
-                        onChange={e => { const u = [...review.skills_matrix]; u[i] = { ...s, name: e.target.value }; setReview({ ...review, skills_matrix: u }) }}
-                        className="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50" />
-                      <button onClick={() => setReview({ ...review, skills_matrix: review.skills_matrix.filter((_, j) => j !== i) })}
-                        className="text-xs text-red-400 hover:text-red-600 font-bold flex-shrink-0 leading-none">×</button>
+                {review.skills_matrix.map((s, i) => {
+                  const inFocus = review.focus_skills.includes(s.name)
+                  return (
+                    <div key={i}
+                      draggable
+                      onDragStart={() => { setDragIndex(i); setDragPoolSkillName(s.name) }}
+                      onDragOver={e => { e.preventDefault(); setDragOverIndex(i) }}
+                      onDragLeave={() => setDragOverIndex(null)}
+                      onDrop={() => handleSkillDrop(i)}
+                      onDragEnd={() => { setDragIndex(null); setDragOverIndex(null); setDragPoolSkillName(null); setDragOverSection(null) }}
+                      className={`bg-white rounded-lg p-2 w-[190px] space-y-1.5 cursor-grab active:cursor-grabbing transition-all border
+                        ${dragIndex === i ? 'opacity-40 border-gray-200' : dragOverIndex === i ? 'border-blue-400 shadow-sm' : 'border-gray-200'}`}
+                    >
+                      <div className="flex items-center gap-1">
+                        <DragHandle />
+                        <input type="text" value={s.name}
+                          onChange={e => { const u = [...review.skills_matrix]; u[i] = { ...s, name: e.target.value }; setReview({ ...review, skills_matrix: u }) }}
+                          className="flex-1 min-w-0 text-xs border border-gray-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 bg-gray-50" />
+                        <button
+                          title={inFocus ? 'Remove from Focus Skills' : 'Add to Focus Skills'}
+                          onClick={() => setReview({ ...review, focus_skills: inFocus ? review.focus_skills.filter(n => n !== s.name) : [...review.focus_skills, s.name] })}
+                          className={`flex-shrink-0 leading-none text-lg ${inFocus ? 'text-teal-400 hover:text-teal-500' : 'text-gray-200 hover:text-teal-400'}`}
+                        >★</button>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <SkillLevelSelector level={s.level} onChange={l => { const u = [...review.skills_matrix]; u[i] = { ...s, level: l }; setReview({ ...review, skills_matrix: u }) }} />
+                        <button onClick={() => setReview({ ...review, skills_matrix: review.skills_matrix.filter((_, j) => j !== i) })}
+                          className="text-xs text-red-300 hover:text-red-500 font-bold flex-shrink-0 leading-none ml-2">×</button>
+                      </div>
                     </div>
-                    <SkillLevelSelector level={s.level} onChange={l => { const u = [...review.skills_matrix]; u[i] = { ...s, level: l }; setReview({ ...review, skills_matrix: u }) }} />
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <div className="flex gap-2 pt-1">
                 <input type="text" value={newSkillInput} onChange={e => setNewSkillInput(e.target.value)}
@@ -472,6 +548,85 @@ export function ProfileResumePage() {
                     setNewSkillInput('')
                   }
                 }} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium">Add</button>
+              </div>
+            </div>
+
+            {/* Key Strengths */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Key Strengths</label>
+                <span className="relative group">
+                  <span className="w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[10px] flex items-center justify-center cursor-help font-medium select-none">?</span>
+                  <span className="pointer-events-none absolute left-0 top-full mt-1.5 z-20 w-64 rounded bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity leading-relaxed">
+                    The skills you're most experienced in. The AI uses these to assess how well your background fits a role, regardless of where you want to take your career.
+                  </span>
+                </span>
+                <span className="text-xs text-gray-400">(drag skills here, or auto-filled from highest level)</span>
+              </div>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOverSection('key_strengths') }}
+                onDragLeave={() => setDragOverSection(null)}
+                onDrop={() => {
+                  if (dragPoolSkillName && !review.key_strengths.includes(dragPoolSkillName)) {
+                    setReview({ ...review, key_strengths: [...review.key_strengths, dragPoolSkillName] })
+                  }
+                  setDragOverSection(null)
+                }}
+                className={`min-h-[44px] flex flex-wrap gap-1.5 p-2 rounded-lg border-2 border-dashed transition-colors
+                  ${dragOverSection === 'key_strengths' ? 'border-purple-400 bg-purple-50' : 'border-gray-200 bg-gray-50'}`}
+              >
+                {review.key_strengths.length === 0 && (
+                  <span className="text-xs text-gray-400 self-center">Drop skills here</span>
+                )}
+                {review.key_strengths.map(name => (
+                  <span key={name} className="flex items-center gap-1 text-xs bg-purple-50 text-purple-700 border border-purple-200 rounded-full px-2.5 py-0.5">
+                    {name}
+                    <button onClick={() => setReview({ ...review, key_strengths: review.key_strengths.filter(n => n !== name) })}
+                      className="text-purple-300 hover:text-red-500 transition-colors ml-0.5" title="Remove from Key Strengths">
+                      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 10l8-8M2 2l8 8"/></svg>
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* Focus Skills */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-1.5">
+                <label className="text-xs font-medium text-gray-600">Focus Skills</label>
+                <span className="relative group">
+                  <span className="w-3.5 h-3.5 rounded-full bg-gray-200 text-gray-500 text-[10px] flex items-center justify-center cursor-help font-medium select-none">?</span>
+                  <span className="pointer-events-none absolute left-0 top-full mt-1.5 z-20 w-72 rounded bg-gray-800 px-2.5 py-1.5 text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity leading-relaxed">
+                    Skills you want to build your career around going forward. Even if you're stronger elsewhere, the AI will favor jobs that put these to use. Great for signaling a stack transition -- for example, strong in Ruby on Rails but want to move to JavaScript.
+                  </span>
+                </span>
+                <span className="text-xs text-gray-400">(star or drag skills here)</span>
+              </div>
+              <div
+                onDragOver={e => { e.preventDefault(); setDragOverSection('focus_skills') }}
+                onDragLeave={() => setDragOverSection(null)}
+                onDrop={() => {
+                  if (dragPoolSkillName && !review.focus_skills.includes(dragPoolSkillName)) {
+                    setReview({ ...review, focus_skills: [...review.focus_skills, dragPoolSkillName] })
+                  }
+                  setDragOverSection(null)
+                }}
+                className={`min-h-[44px] flex flex-wrap gap-1.5 p-2 rounded-lg border-2 border-dashed transition-colors
+                  ${dragOverSection === 'focus_skills' ? 'border-teal-400 bg-teal-50' : 'border-gray-200 bg-gray-50'}`}
+              >
+                {review.focus_skills.length === 0 && (
+                  <span className="text-xs text-gray-400 self-center">Star or drop skills here</span>
+                )}
+                {review.focus_skills.map(name => (
+                  <span key={name} className="flex items-center gap-1 text-xs bg-teal-50 text-teal-800 border border-teal-200 rounded-full px-2.5 py-0.5">
+                    <span className="text-teal-400 text-sm leading-none">★</span>
+                    {name}
+                    <button onClick={() => setReview({ ...review, focus_skills: review.focus_skills.filter(n => n !== name) })}
+                      className="text-teal-300 hover:text-red-500 transition-colors ml-0.5" title="Remove from Focus Skills">
+                      <svg className="w-3 h-3" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 10l8-8M2 2l8 8"/></svg>
+                    </button>
+                  </span>
+                ))}
               </div>
             </div>
 
