@@ -42,6 +42,13 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
     skills: 30, language: 20, company: 20, location: 15, growth: 15,
   }
 
+  // Resolve active resume version for key_strengths and focus_skills
+  const activeVersion = Array.isArray(profile.resume_versions)
+    ? (profile.resume_versions as any[]).find(v => v.id === profile.active_resume_version_id) ?? null
+    : null
+  const keyStrengths: string[] = activeVersion?.key_strengths ?? []
+  const focusSkills: string[] = activeVersion?.focus_skills ?? []
+
   // Call AI
   const ai = getAIProvider()
   let aiRaw: string
@@ -54,7 +61,9 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
       preferredLanguageEnv: profile.preferred_language_env ?? 'any',
       locationArea: profile.location_area ?? '',
       workStyle: Array.isArray(profile.work_style) ? profile.work_style.join(', ') : '',
-      skills: profile.skills ?? [],
+      experienceLevel: profile.experience_level ?? 1,
+      keyStrengths,
+      focusSkills,
       weights,
       jobDescription: job.description_raw ?? '',
     }))
