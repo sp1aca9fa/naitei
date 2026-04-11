@@ -66,7 +66,7 @@ export async function previewResumeVersion(versionId: string) {
   return res.json()
 }
 
-export async function updateResumeVersion(versionId: string, data: { skills_matrix?: { name: string; level: number }[]; cv_analysis?: string; key_strengths?: string[]; focus_skills?: string[] }) {
+export async function updateResumeVersion(versionId: string, data: { skills_matrix?: { name: string; level: number }[]; cv_analysis?: string; key_strengths?: string[]; focus_skills?: string[]; text?: string }) {
   const headers = await authHeaders()
   const res = await fetch(`${API_URL}/profile/resume/${versionId}`, {
     method: 'PATCH',
