@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { getAIProvider } from './ai/provider'
+import { getScoringAIProvider } from './ai/provider'
 import { JobScoreSchema, JobScore } from './ai/schemas'
 import { SCORE_JOB_SYSTEM, scoreJobPrompt } from '../prompts/score-job'
 import { parseAIJson } from './ai/parseJson'
@@ -50,11 +50,15 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
   const focusSkills: string[] = activeVersion?.focus_skills ?? []
 
   // Call AI
-  const ai = getAIProvider()
+  const ai = getScoringAIProvider()
   let aiRaw: string
   try {
     if (!profile.experience_summary) throw new Error('No resume summary found. Please upload a CV first.')
     const resumeText = profile.experience_summary
+
+    const maxChars = process.env.JOB_DESCRIPTION_MAX_CHARS ? parseInt(process.env.JOB_DESCRIPTION_MAX_CHARS) : undefined
+    const rawDescription = job.description_raw ?? ''
+    const jobDescription = maxChars ? rawDescription.slice(0, maxChars) : rawDescription
 
     aiRaw = await ai.complete(SCORE_JOB_SYSTEM, scoreJobPrompt({
       resumeText,
@@ -65,7 +69,7 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
       keyStrengths,
       focusSkills,
       weights,
-      jobDescription: job.description_raw ?? '',
+      jobDescription,
     }))
   } catch (err) {
     await supabase.from('jobs').update({ scoring_status: 'failed' }).eq('id', jobId)

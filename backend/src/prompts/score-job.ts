@@ -55,41 +55,65 @@ Working(3) = 2+ years paid production use, independently capable
 Proficient(4) = 4-5 years, led features or mentored others
 Expert(5) = 6+ years deep mastery, architectural decisions
 
-SCORING ADJUSTMENTS — apply these after your base skill and experience analysis:
+SCORING PROCESS — follow this order strictly:
 
-1. SENIORITY CAP
-   Compare the experience level in target role against the job's seniority requirements.
-   • Level 1-2 vs. a role that clearly requires Senior / Lead / Staff / Principal / 5+ years:
-     cap the total score at 50; recommendation must be save_for_later or skip.
-   • Level 1-2 vs. a role that clearly requires Mid-level / 2-4 years:
-     cap the total score at 65.
-   • Level 3 vs. a role that clearly requires Senior:
-     cap the total score at 72.
-   • Level 4-5, or seniority matches well, or the role is unspecified: no cap.
-   A user at Exposure or Foundational should never receive apply_now or
-   apply_with_tailoring for a clearly Senior role regardless of skill match.
+STEP 1 — BASE SCORE (no caps, no bonuses yet):
+Score each breakdown component independently based on actual match quality.
+The base score must reflect genuine fit as if no ceilings exist.
 
-2. KEY STRENGTHS
-   Key Strengths are the skills the user is most experienced in and can deliver
-   reliably. If the job's core required skills overlap with key strengths:
-   • Weight those matches more heavily than ordinary skill matches.
-   • A job requiring 2 or more key strengths alongside otherwise decent overall
-     fit should not score below 70.
-   • Each key strength match raises confidence in the match quality even if
-     other areas are weak.
+skills_match calibration (use this as your anchor):
+• Zero overlap — job requires a completely different tech stack with no shared skills: 0-10
+• 1 incidental match out of 5+ required core skills: 10-20
+• Partial overlap, missing most core skills: 20-35
+• Moderate overlap, some gaps: 40-60
+• Strong overlap, minor gaps: 65-80
+• Near-complete match: 85-100
 
-3. FOCUS SKILLS
-   Focus Skills represent the user's intentional career direction — skills they
-   are actively building toward, even if not yet proficient.
-   • If the job meaningfully uses focus skills: add up to +8 points to the total
-     score for career alignment.
-   • If the user's current proficiency on a focus skill is low (Exposure or
-     Foundational) but the job uses it: be lenient on that specific gap — frame
-     it as a growth opportunity in green_flags or summary rather than a
-     disqualifier in red_flags.
-   • Do not apply the bonus if focus skills appear only incidentally in the JD.
-   • Never inflate the score purely on focus skills if the job's core required
-     skills are missing from the user's profile.
+STEP 2 — SENIORITY CAP (apply min(base, cap) — the cap can only reduce, never raise):
+Compare experience level in target role against the job's seniority requirements.
+• Level 1-2 vs. clearly Senior / Lead / Staff / Principal / 5+ years: cap = 50
+• Level 1-2 vs. clearly Mid-level / 2-4 years: cap = 65
+• Level 3 vs. clearly Senior: cap = 72
+• Level 4-5, seniority matches, or role is unspecified: no cap
+If your base score is already below the cap, the cap changes nothing.
+The cap is not a target — it is only a ceiling. Most seniority-capped jobs with
+poor skill match will score well below the cap (e.g. 8, 15, 22).
+A user at Exposure or Foundational should never receive apply_now or
+apply_with_tailoring for a clearly Senior role regardless of skill match.
+
+CALIBRATION EXAMPLES (internalize these before scoring):
+• Bootcamp JS grad (level 2) vs Senior C++ Win32 API role (zero skill overlap):
+  base ~8 (zero stack match), cap 50 → final 8. Skip.
+• Bootcamp JS grad (level 2) vs Senior Rails role (used Rails slightly):
+  base ~22 (partial match, seniority gap), cap 50 → final 22. Skip.
+• Mid JS dev (level 3) vs Senior JS role (close but too junior):
+  base ~68 (good skills), cap 72 → final 68. Save for later.
+• Senior JS dev (level 4) vs Senior JS role (strong match):
+  base ~84, no cap → final 84+. Apply now or tailor.
+
+STEP 3 — ADJUSTMENTS:
+
+KEY STRENGTHS:
+Key Strengths are the skills the user is most experienced in and can deliver
+reliably. If the job's core required skills overlap with key strengths:
+• Weight those matches more heavily than ordinary skill matches.
+• A job requiring 2 or more key strengths alongside otherwise decent overall
+  fit should not score below 70.
+• Each key strength match raises confidence in the match quality even if
+  other areas are weak.
+
+FOCUS SKILLS:
+Focus Skills represent the user's intentional career direction — skills they
+are actively building toward, even if not yet proficient.
+• If the job meaningfully uses focus skills: add up to +5 points to the total
+  score for career alignment.
+• If the user's current proficiency on a focus skill is low (Exposure or
+  Foundational) but the job uses it: be lenient on that specific gap — frame
+  it as a growth opportunity in green_flags or summary rather than a
+  disqualifier in red_flags.
+• Do not apply the bonus if focus skills appear only incidentally in the JD.
+• Never inflate the score purely on focus skills if the job's core required
+  skills are missing from the user's profile.
 
 WEIGHTS:
 skills=${p.weights.skills} lang=${p.weights.language} company=${p.weights.company} location=${p.weights.location} growth=${p.weights.growth}

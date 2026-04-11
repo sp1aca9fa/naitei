@@ -255,6 +255,15 @@ export function getAIProvider(): AIProvider {
   }
 }
 
+// Scoring-specific provider. SCORING_AI_MODEL overrides the default provider
+// and forces Gemini with the specified model (e.g. gemini-2.5-flash-lite).
+// Falls back to the default AI_PROVIDER if not set.
+export function getScoringAIProvider(): AIProvider {
+  const scoringModel = process.env.SCORING_AI_MODEL
+  if (scoringModel) return new GeminiProvider(scoringModel)
+  return getAIProvider()
+}
+
 // Cheaper provider for low-stakes tasks like company research
 export function getCompanyAIProvider(): AIProvider {
   if (process.env.AI_PROVIDER === 'gemini' && process.env.COMPANY_AI_MODEL) {

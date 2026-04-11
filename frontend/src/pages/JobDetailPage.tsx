@@ -72,6 +72,7 @@ export function JobDetailPage() {
     const ts = parseInt(sessionStorage.getItem(`rescore_cooldown_${id}`) ?? '0')
     return Date.now() - ts < 60_000
   })
+  const [descriptionExpanded, setDescriptionExpanded] = useState(false)
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [savingUrl, setSavingUrl] = useState(false)
@@ -266,6 +267,11 @@ export function JobDetailPage() {
           )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {job.scored_at && (
+            <span className="text-xs text-gray-400">
+              Scored {new Date(job.scored_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+            </span>
+          )}
           {(() => {
             const delayedUntil = rescoreAvailableAt(job.scored_at ?? null)
             const blocked = rescoring || rescoreCooldown || !!delayedUntil || job.scoring_status === 'pending'
@@ -430,8 +436,33 @@ export function JobDetailPage() {
 
       {job.description_raw && (
         <div id="job-description" className="bg-white border border-gray-200 rounded-lg p-6">
-          <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Job Description</h4>
-          <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{job.description_raw}</pre>
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Description</h4>
+            <button
+              onClick={() => setDescriptionExpanded(v => !v)}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              {descriptionExpanded ? 'Collapse' : 'Expand'}
+            </button>
+          </div>
+          {descriptionExpanded ? (
+            <>
+              <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{job.description_raw}</pre>
+              <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
+                <span className="text-xs text-gray-400">{job.description_raw.length.toLocaleString()} chars</span>
+                {(() => {
+                  const maxChars = import.meta.env.VITE_JOB_DESCRIPTION_MAX_CHARS ? parseInt(import.meta.env.VITE_JOB_DESCRIPTION_MAX_CHARS) : undefined
+                  return maxChars && job.description_raw.length > maxChars ? (
+                    <span className="text-xs text-yellow-600">Only the first {maxChars.toLocaleString()} chars are sent to AI for scoring</span>
+                  ) : null
+                })()}
+              </div>
+            </>
+          ) : (
+            <p className="text-xs text-gray-400 italic">
+              {job.description_raw.length.toLocaleString()} chars — click Expand to read
+            </p>
+          )}
         </div>
       )}
 
