@@ -46,7 +46,7 @@ interface ReviewState {
   experience_summary: string; target_role: string; target_role_years: number
   experience_level: 1 | 2 | 3 | 4 | 5; oldProfile: Profile | null
   isManualEdit?: boolean; versionId?: string; editingVersionId: string | null
-  key_strengths: string[]; focus_skills: string[]
+  key_strengths: string[]; focus_skills: string[]; raw_text: string
 }
 
 function LevelTooltip() {
@@ -105,6 +105,8 @@ export function ProfileResumePage() {
   const [uploadMsg, setUploadMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [review, setReview] = useState<ReviewState | null>(null)
   const [newSkillInput, setNewSkillInput] = useState('')
+  const [showViewRawCv, setShowViewRawCv] = useState(false)
+  const [showEditRawCv, setShowEditRawCv] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [dragIndex, setDragIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
@@ -142,6 +144,7 @@ export function ProfileResumePage() {
         editingVersionId: res.version_id ?? null,
         key_strengths: autoKeyStrengths(uploadedSkills),
         focus_skills: [],
+        raw_text: res.profile?.resume_versions?.find((v: ResumeVersion) => v.id === res.version_id)?.text ?? '',
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Upload failed' })
@@ -172,6 +175,7 @@ export function ProfileResumePage() {
           cv_analysis: review.cv_analysis,
           key_strengths: review.key_strengths,
           focus_skills: review.focus_skills,
+          text: review.raw_text,
         })
       }
       setProfile(updated)
@@ -225,6 +229,7 @@ export function ProfileResumePage() {
         oldProfile, versionId, editingVersionId: versionId,
         key_strengths: storedVersion.key_strengths ?? autoKeyStrengths(storedVersion.skills_matrix),
         focus_skills: storedVersion.focus_skills ?? [],
+        raw_text: storedVersion.text ?? '',
       })
       return
     }
@@ -247,6 +252,7 @@ export function ProfileResumePage() {
         oldProfile, versionId, editingVersionId: versionId,
         key_strengths: autoKeyStrengths(previewSkills),
         focus_skills: [],
+        raw_text: oldProfile?.resume_versions?.find(v => v.id === versionId)?.text ?? '',
       })
     } catch (err) {
       setUploadMsg({ type: 'err', text: err instanceof Error ? err.message : 'Failed to load version' })
@@ -331,6 +337,7 @@ export function ProfileResumePage() {
                       editingVersionId: profile.active_resume_version_id,
                       key_strengths: activeVersion?.key_strengths ?? autoKeyStrengths(editSkills),
                       focus_skills: activeVersion?.focus_skills ?? [],
+                      raw_text: activeVersion?.text ?? '',
                     })
                   }}
                   className="text-xs px-3 py-1.5 bg-white border border-gray-300 hover:border-blue-400 hover:text-blue-600 text-gray-600 rounded-lg font-medium transition-colors flex-shrink-0"
@@ -393,6 +400,25 @@ export function ProfileResumePage() {
                       </span>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {activeVersion?.text && (
+                <div>
+                  <button
+                    onClick={() => setShowViewRawCv(v => !v)}
+                    className="text-xs text-gray-400 hover:text-gray-600 font-medium"
+                  >
+                    {showViewRawCv ? 'Hide raw CV' : 'Raw CV'}
+                  </button>
+                  {showViewRawCv && (
+                    <textarea
+                      readOnly
+                      value={activeVersion.text}
+                      rows={14}
+                      className="mt-2 w-full text-xs font-mono border border-gray-200 rounded-lg px-3 py-2 bg-gray-50 text-gray-600 resize-y focus:outline-none"
+                    />
+                  )}
                 </div>
               )}
             </div>
@@ -628,6 +654,27 @@ export function ProfileResumePage() {
                   </span>
                 ))}
               </div>
+            </div>
+
+            {/* Raw CV */}
+            <div>
+              <button
+                onClick={() => setShowEditRawCv(v => !v)}
+                className="text-xs text-gray-500 hover:text-gray-700 font-medium"
+              >
+                {showEditRawCv ? 'Hide raw CV' : 'Raw CV'}
+              </button>
+              {showEditRawCv && (
+                <div className="mt-2 space-y-1">
+                  <p className="text-xs text-gray-400">Changes to raw CV text affect ATS scoring on future job analyses.</p>
+                  <textarea
+                    value={review.raw_text}
+                    onChange={e => setReview({ ...review, raw_text: e.target.value })}
+                    rows={14}
+                    className="w-full text-xs font-mono border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-700 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              )}
             </div>
 
             {review.versionId && <p className="text-xs text-amber-700">Saving will make this the active version.</p>}

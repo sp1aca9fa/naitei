@@ -51,7 +51,10 @@ export function ProfileWeightsPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Score Weights</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">Score Weights</h1>
+      <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6 text-sm text-red-700">
+        These weights are currently not in use. This feature is planned for a future update (language/location preference warnings and recommendation adjustments).
+      </div>
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>

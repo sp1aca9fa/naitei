@@ -1,16 +1,16 @@
 import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { getJob, getProfile, saveApplication, rescoreJob, updateJob } from '../lib/api'
+import { useParams, Link, useNavigate } from 'react-router-dom'
+import { getJob, getProfile, saveApplication, rescoreJob, updateJob, deleteJob } from '../lib/api'
 import { CompanyResearchCard } from '../components/CompanyResearchCard'
 
 interface AtsDetails {
   ats_score: number
   keyword_matches: string[]
   missing_keywords: string[]
-  formatting_issues: string[]
-  section_header_issues: string[]
   action_verb_score: number
   improvements: string[]
+  skipped?: boolean
+  reason?: string
 }
 
 interface Job {
@@ -59,6 +59,7 @@ function rescoreAvailableAt(scoredAt: string | null): Date | null {
 
 export function JobDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
   const [job, setJob] = useState<Job | null>(null)
   const [recentThresholdHours, setRecentThresholdHours] = useState(48)
   const [companyCredits, setCompanyCredits] = useState(0)
@@ -73,6 +74,8 @@ export function JobDetailPage() {
     return Date.now() - ts < 60_000
   })
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [confirmDelete, setConfirmDelete] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [addingUrl, setAddingUrl] = useState(false)
   const [urlInput, setUrlInput] = useState('')
   const [savingUrl, setSavingUrl] = useState(false)
@@ -101,10 +104,6 @@ export function JobDetailPage() {
     try {
       const data = await rescoreJob(job.id)
       setJob(data.job)
-      if (data.error) {
-        const isTemporary = /overload|high demand|temporary|capacity/i.test(data.error)
-        setError(isTemporary ? 'Scoring failed due to high AI demand. Try again in a few minutes.' : `Scoring failed: ${data.error}`)
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Rescore failed')
     } finally {
@@ -146,6 +145,19 @@ export function JobDetailPage() {
     }
   }
 
+  async function handleDelete() {
+    if (!job) return
+    setDeleting(true)
+    try {
+      await deleteJob(job.id)
+      navigate('/jobs')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete')
+      setDeleting(false)
+      setConfirmDelete(false)
+    }
+  }
+
   async function handleSave() {
     if (!job) return
     setSaving(true)
@@ -169,106 +181,106 @@ export function JobDetailPage() {
     <main className="max-w-3xl mx-auto px-6 py-12 space-y-5">
       {error && <p className="text-sm text-red-500">{error}</p>}
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Link to="/jobs" className="text-xs text-gray-400 hover:text-gray-600 mb-2 inline-block">
-            &larr; My Jobs
-          </Link>
-          <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
-          {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
-          <div className="flex items-center gap-2 mt-1">
-            {job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < recentThresholdHours * 60 * 60 * 1000 && (
-              <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">Recent</span>
-            )}
-            {editingDate ? (
-              <>
-                <input
-                  type="date"
-                  value={dateInput}
-                  onChange={e => setDateInput(e.target.value)}
-                  className="text-xs border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  autoFocus
-                />
-                <button
-                  onClick={handleSaveDate}
-                  disabled={savingDate}
-                  className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                >
-                  {savingDate ? '...' : 'Save'}
-                </button>
-                <button onClick={() => setEditingDate(false)} className="text-xs text-gray-400 hover:text-gray-600">
-                  Cancel
-                </button>
-              </>
-            ) : job.posted_at ? (
-              <>
-                <span className="text-xs text-gray-400">
-                  Posted {new Date(job.posted_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                </span>
-                <button
-                  onClick={() => { setDateInput(job.posted_at!.slice(0, 10)); setEditingDate(true) }}
-                  className="text-xs text-gray-400 hover:text-gray-600"
-                >
-                  Edit
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={() => { setDateInput(''); setEditingDate(true) }}
-                className="text-xs text-gray-400 hover:text-gray-600"
-              >
-                + Add posting date
-              </button>
-            )}
-          </div>
-          {job.url ? (
-            <div className="flex items-center gap-3 mt-1">
-              <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-                View original posting &rarr;
-              </a>
-              {job.description_raw && (
-                <a href="#job-description" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
-                  View saved description
-                </a>
-              )}
-            </div>
-          ) : addingUrl ? (
-            <div className="flex items-center gap-2 mt-1">
+      <div>
+        <Link to="/jobs" className="text-xs text-gray-400 hover:text-gray-600 mb-2 inline-block">
+          &larr; My Jobs
+        </Link>
+        <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
+        {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
+        <div className="flex items-center gap-2 mt-1">
+          {job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < recentThresholdHours * 60 * 60 * 1000 && (
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">Recent</span>
+          )}
+          {editingDate ? (
+            <>
               <input
-                type="url"
-                value={urlInput}
-                onChange={e => setUrlInput(e.target.value)}
-                placeholder="https://..."
-                className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
+                type="date"
+                value={dateInput}
+                onChange={e => setDateInput(e.target.value)}
+                className="text-xs border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 autoFocus
               />
               <button
-                onClick={handleSaveUrl}
-                disabled={savingUrl || !urlInput.trim()}
-                className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                onClick={handleSaveDate}
+                disabled={savingDate}
+                className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
-                {savingUrl ? '...' : 'Save'}
+                {savingDate ? '...' : 'Save'}
               </button>
-              <button onClick={() => setAddingUrl(false)} className="text-xs text-gray-400 hover:text-gray-600">
+              <button onClick={() => setEditingDate(false)} className="text-xs text-gray-400 hover:text-gray-600">
                 Cancel
               </button>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3 mt-1">
-              {job.description_raw && (
-                <a href="#job-description" className="text-xs text-blue-600 hover:underline">
-                  View job description &rarr;
-                </a>
-              )}
-              <button onClick={() => setAddingUrl(true)} className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
-                + Add URL
+            </>
+          ) : job.posted_at ? (
+            <>
+              <span className="text-xs text-gray-400">
+                Posted {new Date(job.posted_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+              </span>
+              <button
+                onClick={() => { setDateInput(job.posted_at!.slice(0, 10)); setEditingDate(true) }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Edit
               </button>
-            </div>
+            </>
+          ) : (
+            <button
+              onClick={() => { setDateInput(''); setEditingDate(true) }}
+              className="text-xs text-gray-400 hover:text-gray-600"
+            >
+              + Add posting date
+            </button>
           )}
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        {job.url ? (
+          <div className="flex items-center gap-3 mt-1">
+            <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
+              View original posting &rarr;
+            </a>
+            {job.description_raw && (
+              <a href="#job-description" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+                View saved description
+              </a>
+            )}
+          </div>
+        ) : addingUrl ? (
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="url"
+              value={urlInput}
+              onChange={e => setUrlInput(e.target.value)}
+              placeholder="https://..."
+              className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
+              autoFocus
+            />
+            <button
+              onClick={handleSaveUrl}
+              disabled={savingUrl || !urlInput.trim()}
+              className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+            >
+              {savingUrl ? '...' : 'Save'}
+            </button>
+            <button onClick={() => setAddingUrl(false)} className="text-xs text-gray-400 hover:text-gray-600">
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-3 mt-1">
+            {job.description_raw && (
+              <a href="#job-description" className="text-xs text-blue-600 hover:underline">
+                View job description &rarr;
+              </a>
+            )}
+            <button onClick={() => setAddingUrl(true)} className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
+              + Add URL
+            </button>
+          </div>
+        )}
+
+        {/* Action buttons row */}
+        <div className="flex items-center justify-end gap-2 mt-3">
           {job.scored_at && (
-            <span className="text-xs text-gray-400">
+            <span className="text-xs text-gray-400 mr-auto">
               Scored {new Date(job.scored_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
             </span>
           )}
@@ -300,6 +312,30 @@ export function JobDetailPage() {
           >
             {saved ? 'Saved to Applications' : saving ? 'Saving...' : 'Save to Applications'}
           </button>
+          {confirmDelete ? (
+            <span className="flex items-center gap-1">
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="px-3 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? '...' : 'Confirm'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="px-3 py-2 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-400 hover:text-red-500 hover:border-red-300"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
 
@@ -319,17 +355,46 @@ export function JobDetailPage() {
         <>
           {/* Scores + recommendation */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
+            <div className="flex justify-center gap-10 mb-6">
+              {/* Fit score */}
+              <div className="relative group cursor-default text-center">
                 <p className="text-4xl font-bold text-gray-900">{job.ai_score}<span className="text-lg text-gray-400">/100</span></p>
-                <p className="text-xs text-gray-500 mt-1">Match score</p>
-              </div>
-              {job.ats_score !== null && (
-                <div className="text-right">
-                  <p className="text-2xl font-bold text-gray-900">{job.ats_score}<span className="text-sm text-gray-400">/100</span></p>
-                  <p className="text-xs text-gray-500 mt-1">ATS score</p>
+                <p className="text-xs text-gray-500 mt-1">Fit score</p>
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 z-10 shadow-lg hidden group-hover:block text-left">
+                  <p className="font-semibold mb-2">Technical fit — "Am I qualified?"</p>
+                  <div className="space-y-1 mb-2">
+                    <p><span className="text-green-400 font-medium">80–100</span> — Strong qualification. Skills and seniority closely align with the role.</p>
+                    <p><span className="text-blue-400 font-medium">65–79</span> — Good fit. Minor skill or seniority gaps — tailoring helps.</p>
+                    <p><span className="text-yellow-400 font-medium">45–64</span> — Partial fit. Notable gaps. Apply if you're comfortable stretching.</p>
+                    <p><span className="text-red-400 font-medium">0–44</span> — Poor fit. Significant skill or seniority mismatch. Best to skip.</p>
+                  </div>
+                  <p className="text-gray-400 border-t border-gray-700 pt-2">Based on: your skills, proficiency levels, seniority match, and experience relevance.</p>
                 </div>
-              )}
+              </div>
+
+              {/* ATS score */}
+              {job.ats_details?.skipped ? (
+                <div className="text-center">
+                  <p className="text-4xl font-bold text-gray-300">—</p>
+                  <p className="text-xs text-gray-400 mt-1">ATS</p>
+                  <p className="text-xs text-yellow-600 mt-1">Re-upload CV to enable</p>
+                </div>
+              ) : job.ats_score !== null ? (
+                <div className="relative group cursor-default text-center">
+                  <p className="text-4xl font-bold text-gray-900">{job.ats_score}<span className="text-lg text-gray-400">/100</span></p>
+                  <p className="text-xs text-gray-500 mt-1">ATS score</p>
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 z-10 shadow-lg hidden group-hover:block text-left">
+                    <p className="font-semibold mb-2">Keyword screening — "Will my CV get through?"</p>
+                    <div className="space-y-1 mb-2">
+                      <p><span className="text-green-400 font-medium">80–100</span> — Strong keyword coverage. CV language closely matches what the job expects.</p>
+                      <p><span className="text-blue-400 font-medium">60–79</span> — Decent coverage. Some keywords missing — minor tailoring helps.</p>
+                      <p><span className="text-yellow-400 font-medium">40–59</span> — Notable keyword gaps. Tailoring CV language to the job description recommended.</p>
+                      <p><span className="text-red-400 font-medium">0–39</span> — Low keyword overlap. CV language may not resonate with automated screening.</p>
+                    </div>
+                    <p className="text-gray-400 border-t border-gray-700 pt-2">Evaluated from your raw CV text only — not the interpreted summary.</p>
+                  </div>
+                </div>
+              ) : null}
             </div>
             {job.ai_summary && <p className="text-sm text-gray-600 mb-4">{job.ai_summary}</p>}
             {rec && (
@@ -344,14 +409,14 @@ export function JobDetailPage() {
             )}
           </div>
 
-          {/* Score breakdown */}
+          {/* Score breakdowns */}
           {Object.keys(breakdown).length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Score Breakdown</h4>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fit Breakdown</h4>
               <div className="space-y-2">
                 {Object.entries(breakdown).map(([key, val]) => (
                   <div key={key} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 w-36 shrink-0 capitalize">{key.replace(/_/g, ' ')}</span>
+                    <span className="text-xs text-gray-500 w-40 shrink-0 capitalize">{key.replace(/_/g, ' ')}</span>
                     <div className="flex-1 bg-gray-100 rounded-full h-2">
                       <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${val}%` }} />
                     </div>

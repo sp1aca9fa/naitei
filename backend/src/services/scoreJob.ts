@@ -38,16 +38,18 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
   // Mark pending
   await supabase.from('jobs').update({ scoring_status: 'pending' }).eq('id', jobId)
 
-  const weights = profile.score_weights ?? {
-    skills: 30, language: 20, company: 20, location: 15, growth: 15,
-  }
-
-  // Resolve active resume version for key_strengths and focus_skills
+  // Resolve active resume version for key_strengths, focus_skills, and raw text
   const activeVersion = Array.isArray(profile.resume_versions)
     ? (profile.resume_versions as any[]).find(v => v.id === profile.active_resume_version_id) ?? null
     : null
   const keyStrengths: string[] = activeVersion?.key_strengths ?? []
   const focusSkills: string[] = activeVersion?.focus_skills ?? []
+  // activeVersion.text reflects any in-app edits; raw_resume_text is always the original upload.
+  // They're set together on upload, so if experience_summary exists this should too.
+  const rawResumeText: string | null = activeVersion?.text ?? profile.raw_resume_text ?? null
+  if (!rawResumeText) {
+    console.warn('[scoreJob] raw_resume_text missing for user', userId, '— ATS scoring will be skipped')
+  }
 
   // Call AI
   const ai = getScoringAIProvider()
@@ -62,13 +64,13 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
 
     aiRaw = await ai.complete(SCORE_JOB_SYSTEM, scoreJobPrompt({
       resumeText,
+      rawResumeText,
       preferredLanguageEnv: profile.preferred_language_env ?? 'any',
       locationArea: profile.location_area ?? '',
       workStyle: Array.isArray(profile.work_style) ? profile.work_style.join(', ') : '',
       experienceLevel: profile.experience_level ?? 1,
       keyStrengths,
       focusSkills,
-      weights,
       jobDescription,
     }))
   } catch (err) {
@@ -81,6 +83,7 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
   try {
     aiJson = parseAIJson(aiRaw)
   } catch {
+    console.error('[scoreJob] JSON parse failed. Raw response (first 500 chars):', aiRaw.slice(0, 500))
     await supabase.from('jobs').update({ scoring_status: 'failed' }).eq('id', jobId)
     throw new Error('AI returned invalid JSON')
   }
@@ -88,32 +91,50 @@ const blocklistHit = blocklist.find(w => description.includes(w.toLowerCase()))
   // Validate
   const validation = JobScoreSchema.safeParse(aiJson)
   if (!validation.success) {
+    console.error('[scoreJob] schema validation failed:', JSON.stringify(validation.error.errors, null, 2))
+    console.error('[scoreJob] parsed AI JSON:', JSON.stringify(aiJson, null, 2).slice(0, 1000))
     await supabase.from('jobs').update({ scoring_status: 'failed' }).eq('id', jobId)
     throw new Error('AI response failed schema validation')
   }
 
-  const result = validation.data
+  const rawResult = validation.data
+
+  // Remove from missing_skills any skill confirmed present via key_strengths or focus_skills.
+  // Gemini occasionally lists skills the user has as missing — this is a deterministic safeguard.
+  const ownedSkillsLower = new Set([
+    ...keyStrengths.map(s => s.toLowerCase()),
+    ...focusSkills.map(s => s.toLowerCase()),
+  ])
+  const result = ownedSkillsLower.size > 0
+    ? { ...rawResult, fit: { ...rawResult.fit, missing_skills: rawResult.fit.missing_skills.filter(s => !ownedSkillsLower.has(s.toLowerCase())) } }
+    : rawResult
 
   // Save all score fields back to the job row
   const { error: updateError } = await supabase.from('jobs').update({
     scoring_status: 'scored',
     scored_at: new Date().toISOString(),
-    language_env: result.score.language_env_detected,
-    ai_score: result.score.total,
-    ai_score_breakdown: result.score.breakdown,
-    ai_summary: result.score.summary,
-    ai_green_flags: result.score.green_flags,
-    ai_red_flags: result.score.red_flags,
-    ai_recommendation: result.score.recommendation,
-    ai_recommendation_reason: result.score.recommendation_reason,
-    matched_skills: result.score.matched_skills,
-    missing_skills: result.score.missing_skills,
-    salary_assessment: result.score.salary_assessment,
-    application_effort: result.score.application_effort,
-    tech_debt_signal: result.score.tech_debt_signal,
-    ats_score: result.ats.ats_score,
-    ats_issues: [...result.ats.formatting_issues, ...result.ats.section_header_issues],
-    ats_details: result.ats,
+    // Fit score — technical qualification (maps to ai_score for cards/filtering/dashboard)
+    ai_score: result.fit.score,
+    ai_score_breakdown: {
+      skills_match: result.fit.skills_match,
+      seniority_match: result.fit.seniority_match,
+      experience_relevance: result.fit.experience_relevance,
+    },
+    ai_summary: result.fit.summary,
+    ai_green_flags: result.fit.green_flags,
+    ai_red_flags: result.fit.red_flags,
+    matched_skills: result.fit.matched_skills,
+    missing_skills: result.fit.missing_skills,
+    ai_recommendation: result.fit.recommendation,
+    ai_recommendation_reason: result.fit.recommendation_reason,
+    salary_assessment: result.fit.salary_assessment,
+    application_effort: result.fit.application_effort,
+    tech_debt_signal: result.fit.tech_debt_signal,
+    language_env: result.fit.language_env_detected,
+    // ATS score — keyword screening from raw CV
+    ats_score: result.ats?.score ?? null,
+    ats_issues: result.ats?.improvements ?? [],
+    ats_details: result.ats ?? { skipped: true, reason: 'no_raw_resume' },
     resume_version_used: profile.active_resume_version_id ?? null,
   }).eq('id', jobId)
 

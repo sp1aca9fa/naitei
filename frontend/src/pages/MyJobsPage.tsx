@@ -13,6 +13,7 @@ interface JobSummary {
   ats_score: number | null
   is_recent: boolean | null
   posted_at: string | null
+  scored_at: string | null
   created_at: string
 }
 
@@ -366,6 +367,14 @@ export function MyJobsPage() {
                 <span className="text-xs text-gray-400">
                   {new Date(job.created_at).toLocaleDateString()}
                 </span>
+                {job.scored_at && (
+                  <>
+                    <span className="text-xs text-gray-300">•</span>
+                    <span className="text-xs text-gray-400">
+                      Scored {new Date(job.scored_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                  </>
+                )}
               </div>
             </div>
               ))}

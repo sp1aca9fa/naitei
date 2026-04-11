@@ -26,38 +26,55 @@ export const ParsedResumeSchema = z.object({
 
 export type ParsedResume = z.infer<typeof ParsedResumeSchema>
 
-export const JobScoreSchema = z.object({
-  score: z.object({
-    total: z.number().int().min(0).max(100),
-    breakdown: z.object({
-      skills_match: z.number().int(),
-      language_environment: z.number().int(),
-      company_quality: z.number().int(),
-      location_commute: z.number().int(),
-      growth_opportunity: z.number().int(),
-    }),
+// Coerce and round any numeric value — handles floats and stringified numbers from AI
+const RobustInt = z.coerce.number().transform(Math.round)
+const ClampedScore = z.coerce.number().transform(v => Math.min(100, Math.max(0, Math.round(v))))
+
+// Normalize enum strings: lowercase + spaces/hyphens to underscores
+function normalizeEnumValue(v: unknown): unknown {
+  return typeof v === 'string' ? v.toLowerCase().replace(/[\s-]+/g, '_') : v
+}
+function robustEnum<T extends [string, ...string[]]>(values: T) {
+  return z.preprocess(normalizeEnumValue, z.enum(values))
+}
+
+// Normalize common AI structural mismatches before Zod validation runs
+function normalizeJobScoreRoot(raw: unknown): unknown {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return raw
+  const obj = raw as Record<string, unknown>
+  // AI sometimes returns {"score": {...}} instead of {"fit": {...}}
+  if (!obj.fit && obj.score && typeof obj.score === 'object') {
+    return { ...obj, fit: obj.score }
+  }
+  return obj
+}
+
+export const JobScoreSchema = z.preprocess(normalizeJobScoreRoot, z.object({
+  fit: z.object({
+    score: ClampedScore,
+    skills_match: RobustInt,
+    seniority_match: RobustInt,
+    experience_relevance: RobustInt,
+    matched_skills: z.array(z.string()),
+    missing_skills: z.array(z.string()),
     summary: z.string(),
     green_flags: z.array(z.string()),
     red_flags: z.array(z.string()),
-    matched_skills: z.array(z.string()),
-    missing_skills: z.array(z.string()),
-    salary_assessment: z.string().nullable(),
-    application_effort: z.enum(['low', 'medium', 'high']),
-    tech_debt_signal: z.boolean(),
-    language_env_detected: z.enum(['english', 'japanese', 'bilingual']),
-    recommendation: z.enum(['apply_now', 'apply_with_tailoring', 'save_for_later', 'skip']),
+    salary_assessment: z.preprocess(v => v ?? null, z.string().nullable()),
+    application_effort: robustEnum(['low', 'medium', 'high']),
+    tech_debt_signal: z.preprocess(v => v === 'true' ? true : v === 'false' ? false : v, z.boolean()),
+    language_env_detected: robustEnum(['english', 'japanese', 'bilingual']),
+    recommendation: robustEnum(['apply_now', 'apply_with_tailoring', 'save_for_later', 'skip']),
     recommendation_reason: z.string(),
   }),
   ats: z.object({
-    ats_score: z.number().int().min(0).max(100),
+    score: ClampedScore,
     keyword_matches: z.array(z.string()),
     missing_keywords: z.array(z.string()),
-    formatting_issues: z.array(z.string()),
-    section_header_issues: z.array(z.string()),
-    action_verb_score: z.number().min(0).max(10),
+    action_verb_score: z.coerce.number().transform(v => Math.min(10, Math.max(0, v))),
     improvements: z.array(z.string()),
-  }),
-})
+  }).optional(),
+}))
 
 export type JobScore = z.infer<typeof JobScoreSchema>
 

@@ -118,7 +118,9 @@ router.post('/import/paste', requireAuth, aiLimiter, async (req: Request, res: R
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Scoring failed'
     const code = (err as Error & { code?: string }).code
-    return res.json({ job, error: msg, skipped: code === 'skipped' })
+    if (code !== 'skipped') console.error('[POST /jobs/import/paste] scoring error:', msg)
+    const clientMsg = /overload|high demand|temporary|capacity/i.test(msg) ? msg : 'Scoring failed'
+    return res.json({ job, error: clientMsg, skipped: code === 'skipped' })
   }
 })
 
@@ -397,7 +399,7 @@ router.post('/import/remoteok', requireAuth, importLimiter, async (req: Request,
 router.get('/', requireAuth, async (req: Request, res: Response) => {
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, posted_at, created_at, missing_skills')
+    .select('id, title, company, source, scoring_status, ai_score, ai_recommendation, ats_score, is_recent, posted_at, scored_at, created_at, missing_skills')
     .eq('user_id', req.user!.id)
     .order('created_at', { ascending: false })
     .limit(50)
@@ -494,8 +496,10 @@ router.post('/:id/rescore', requireAuth, aiLimiter, async (req: Request, res: Re
   } catch (err) {
     const msg = err instanceof Error ? err.message : 'Scoring failed'
     const code = (err as Error & { code?: string }).code
+    console.error('[POST /jobs/:id/rescore] scoring error:', msg)
+    const clientMsg = /overload|high demand|temporary|capacity/i.test(msg) ? msg : 'Scoring failed'
     const { data: updated } = await supabase.from('jobs').select('*').eq('id', req.params.id).single()
-    return res.json({ job: updated, error: msg, skipped: code === 'skipped' })
+    return res.json({ job: updated, error: clientMsg, skipped: code === 'skipped' })
   }
 })
 
