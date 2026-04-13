@@ -2,7 +2,7 @@
 
 **An AI-powered job hunting dashboard built for the Tokyo tech market.**
 
-Paste a job URL or description from any platform, and Naitei scores it against your resume, checks ATS compatibility, generates a tailored cover letter and interview prep, and tracks your entire pipeline in a Kanban board — all self-hosted and free.
+Paste a job URL or description from any platform, and Naitei scores it against your resume, checks ATS compatibility, generates a tailored cover letter and interview prep, and tracks your entire pipeline in a Kanban board.
 
 > Built by a recent bootcamp grad while job hunting in Tokyo, because every existing tool either costs $30/month or ignores the Japan market entirely.
 
@@ -15,7 +15,7 @@ The junior dev job market is brutal, and the Tokyo market adds extra friction:
 - **ATS filters you before any human sees your resume.** 99% of large companies run applications through Applicant Tracking Systems. Most junior applicants get filtered out not because they're unqualified, but because their resume doesn't use the right keywords in the right places.
 - **The best jobs disappear within 24-48 hours.** Applying fast matters. Most people find out about jobs days after posting.
 - **No good tool covers the Tokyo market.** Wantedly, Green, Findy, and JREC-IN don't have public APIs. English-friendly roles require extra filtering on top of everything else. None of the major paid tools have Japan-specific coverage.
-- **Every paid tool is expensive and generic.** JobCopilot ($30/mo), LazyApply ($16/mo), AIApply ($25/mo) — none optimized for: junior dev, Tokyo, English-friendly, bootcamp grad.
+- **Every paid tool is expensive and generic.** JobCopilot ($30/mo), LazyApply ($16/mo), AIApply ($25/mo).. none optimized for: junior dev, Tokyo, English-friendly, bootcamp grad.
 
 ---
 
@@ -90,15 +90,15 @@ The junior dev job market is brutal, and the Tokyo market adds extra friction:
 └────┬──────────────┬───────────────────┬──┘
      │              │                   │
 ┌────▼────┐  ┌──────▼──────────────┐  ┌▼──────────┐
-│Supabase │  │   AI Provider Layer  │  │ Import    │
+│Supabase │  │   AI Provider Layer │  │ Import    │
 │Postgres │  │ Claude / OpenAI /   │  │ Paste/URL │
 │  Auth   │  │ Gemini / Ollama     │  │ Remotive* │
 └─────────┘  └─────────────────────┘  │ RemoteOK* │
-                                       └───────────┘
+                                      └───────────┘
                                        * experimental
 ```
 
-Two independent Vercel deployments. The frontend is a static React SPA; the backend is serverless Express. No Next.js — keeping them separate means the architecture is transparent and each side is independently deployable.
+Two independent Vercel deployments. The frontend is a static React SPA; the backend is serverless Express. No Next.js, keeping them separate means the architecture is transparent and each side is independently deployable.
 
 ---
 
@@ -115,7 +115,7 @@ interface AIProvider {
 }
 ```
 
-Switch between Claude, OpenAI, Gemini, and Ollama by changing `AI_PROVIDER` in env — no code changes. A `mock` provider enables full local development with zero API cost.
+Switch between Claude, OpenAI, Gemini, and Ollama by changing `AI_PROVIDER` in env, no code changes. A `mock` provider enables full local development with zero API cost.
 
 ### Scoring model override
 
@@ -127,7 +127,7 @@ AI output is unpredictable. Every prompt response is validated against a Zod sch
 
 ### Combined scoring + ATS in one call
 
-A single prompt returns both the job-fit score and the ATS analysis. This halves AI costs for the most frequent operation in the app. The scoring model returns structured JSON only — no prose, no markdown wrappers.
+A single prompt returns both the job-fit score and the ATS analysis. This halves AI costs for the most frequent operation in the app. The scoring model returns structured JSON only. No prose, no markdown wrappers.
 
 ### Blocklist pre-filter
 
@@ -210,7 +210,7 @@ OLLAMA_MODEL=llama3
 SCORING_AI_MODEL=                # e.g. gemini-2.5-flash-lite (forces Gemini for scoring)
 COMPANY_AI_MODEL=                # model for company research, interview prep, cover letters
 
-# Job sources (optional — experimental batch import)
+# Job sources (optional, experimental batch import)
 # REMOTIVE_FETCH_COUNT=20        # how many jobs to fetch per run (default: 20)
 
 # Email (Resend)
@@ -289,7 +289,7 @@ Both frontend and backend deploy independently to Vercel.
 
 **Frontend:** Connect the `frontend/` directory as a separate Vercel project. Set all `VITE_*` env vars in the Vercel dashboard.
 
-Set `CRON_SECRET` in both backend env vars and in `vercel.json` — Vercel passes it as the `Authorization` header when triggering cron routes.
+Set `CRON_SECRET` in both backend env vars and in `vercel.json`. Vercel passes it as the `Authorization` header when triggering cron routes.
 
 ---
 
@@ -322,15 +322,15 @@ Set `CRON_SECRET` in both backend env vars and in `vercel.json` — Vercel passe
 
 Phases 1 through 5 are complete. The remaining work:
 
-**Phase 6 — Open Source Polish + Power Features**
+**Phase 6: Open Source Polish + Power Features**
 - Resume A/B testing UI: the data (`resume_version_used`) has been stored with every scored job since Phase 3. Phase 6 adds the UI to compare which resume version scores higher on average
-- Dry run mode: `?dryRun=true` on the scoring route runs the full pipeline without saving — useful for testing prompts or previewing a new resume version
+- Dry run mode: `?dryRun=true` on the scoring route runs the full pipeline without saving, useful for testing prompts or previewing a new resume version
 - `docs/AI_PROVIDERS.md`: provider setup guide and cost comparison per provider
 - `docs/SETUP.md`: complete local and production setup walkthrough
 - Docker Compose for fully self-hosted deployment with no cloud dependency
 - Remove all remaining hardcoded personal data for clean open-source use
 
-**Phase 7 — Multi-Agent Consensus (Future)**
+**Phase 7: Multi-Agent Consensus (Future)**
 
 The AI provider layer already supports multiple providers simultaneously. Phase 7 uses this for selective consensus: cover letter (draft → critique → revise), resume feedback (two models, synthesized output), and optional score disagreement badges when two models diverge by more than 15 points.
 
@@ -340,7 +340,7 @@ The AI provider layer already supports multiple providers simultaneously. Phase 
 
 I graduated from Le Wagon Tokyo's web development bootcamp and immediately ran into everything described above: ATS filtering I couldn't see, Tokyo-specific platforms with no APIs, and paid tools that weren't built for my situation.
 
-Building Naitei let me apply what I learned (and go significantly deeper) while solving a real problem I was experiencing daily. The meta-story — "I built an AI tool to help me find this job" — is intentional. This project demonstrates:
+Building Naitei let me apply what I learned (and go significantly deeper) while solving a real problem I was experiencing daily. The meta-story "I built an AI tool to help me find this job" is intentional. This project demonstrates:
 
 - Full-stack TypeScript (React + Node + Express)
 - AI integration with provider abstraction and production-grade output validation
