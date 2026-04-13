@@ -78,23 +78,23 @@ The junior dev job market is brutal, and the Tokyo market adds extra friction:
 
 ```
 ┌─────────────────────────────────────────┐
-│           FRONTEND (React + TS)          │
+│           FRONTEND (React + TS)         │
 │  Vite · TailwindCSS · React Router      │
 │  Deployed: Vercel (static)              │
 └──────────────────┬──────────────────────┘
                    │ REST API
 ┌──────────────────▼──────────────────────┐
-│           BACKEND (Node + TS)            │
+│           BACKEND (Node + TS)           │
 │  Express · Zod · Rate limiting          │
 │  Deployed: Vercel (serverless)          │
-└────┬──────────────┬───────────────────┬──┘
+└────┬──────────────┬───────────────────┬─┘
      │              │                   │
-┌────▼────┐  ┌──────▼──────────────┐  ┌▼──────────┐
-│Supabase │  │   AI Provider Layer │  │ Import    │
-│Postgres │  │ Claude / OpenAI /   │  │ Paste/URL │
-│  Auth   │  │ Gemini / Ollama     │  │ Remotive* │
-└─────────┘  └─────────────────────┘  │ RemoteOK* │
-                                      └───────────┘
+┌────▼────┐  ┌──────▼──────────────┐   ┌▼──────────┐
+│Supabase │  │   AI Provider Layer │   │ Import    │
+│Postgres │  │ Claude / OpenAI /   │   │ Paste/URL │
+│  Auth   │  │ Gemini / Ollama     │   │ Remotive* │
+└─────────┘  └─────────────────────┘   │ RemoteOK* │
+                                       └───────────┘
                                        * experimental
 ```
 
