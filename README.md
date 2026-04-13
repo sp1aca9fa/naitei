@@ -23,10 +23,10 @@ The junior dev job market is brutal, and the Tokyo market adds extra friction:
 
 | Feature | How it works |
 |---|---|
-| **Paste or URL import** | The primary import flow: paste any job description or drop a URL. The scraper extracts the content automatically; if it can't, it drops into paste mode so you can copy-paste manually. You confirm the job details before it goes to AI — no blind auto-processing |
+| **Paste or URL import** | The primary import flow: paste any job description or drop a URL. The scraper extracts the content automatically; if it can't, it drops into paste mode so you can copy-paste manually. You confirm the job details before it goes to AI: no blind auto-processing |
 | **Remotive / RemoteOK import** | Experimental batch import from two free remote job APIs. Useful for volume, but results vary (API content quality is inconsistent). Secondary to the paste flow |
 | **AI job scoring** | Every job gets a 0-100 fit score across 5 weighted categories, evaluated against your specific profile and resume |
-| **ATS compatibility check** | Separate ATS score: keyword presence, section headers, action verbs, formatting — the stuff robots look for before a human ever reads your CV |
+| **ATS compatibility check** | Separate ATS score: keyword presence, section headers, action verbs, formatting. The stuff robots look for before a human ever reads your CV |
 | **Smart pre-filtering** | Blocklist words (e.g. "native Japanese required", "10 years experience") eliminate bad fits before any AI token is spent |
 | **Resume parsing** | Upload a PDF; AI extracts skills, experience, and education to auto-populate your profile |
 | **Cover letter generator** | One-click per job, using scoring context (matched skills, green flags, company signals) already collected at scoring time |
@@ -34,9 +34,9 @@ The junior dev job market is brutal, and the Tokyo market adds extra friction:
 | **Resume optimization** | Per-job AI feedback on how to tailor your resume for that specific listing |
 | **Application tracker** | Kanban board: Saved → Applied → Interview → Offer, with notes, recruiter tracking, and offer salary logging |
 | **Market insights** | SQL-aggregated: most demanded skills across all your scored jobs, score distribution, top hiring companies |
-| **Skills gap tracker** | Which skills appear most often in jobs you scored — ranked by frequency and average job score |
+| **Skills gap tracker** | Which skills appear most often in jobs you scored, ranked by frequency and average job score |
 | **Daily digest email** | Automated morning email with top new matches above your score threshold |
-| **Auto-fetch cron** | Vercel cron can trigger Remotive/RemoteOK batch imports on a schedule. Experimental — quality depends on the API feed that day |
+| **Auto-fetch cron** | Vercel cron can trigger Remotive/RemoteOK batch imports on a schedule. Experimental: quality depends on the API feed that day |
 | **Follow-up reminders** | Automated email nudges for applications that have gone quiet |
 | **Company research cards** | AI-generated company overviews (tech stack, culture signals, interview tips), cached in DB so the cost is paid once |
 
@@ -353,4 +353,6 @@ Building Naitei let me apply what I learned (and go significantly deeper) while 
 
 ## License
 
-MIT
+[Polyform Noncommercial 1.0.0](LICENSE)
+
+Free to use, fork, and modify for personal and non-commercial purposes. Commercial use requires explicit permission.
