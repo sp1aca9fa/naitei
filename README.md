@@ -353,6 +353,4 @@ Building Naitei let me apply what I learned (and go significantly deeper) while 
 
 ## License
 
-[Polyform Noncommercial 1.0.0](LICENSE)
-
-Free to use, fork, and modify for personal and non-commercial purposes. Commercial use requires explicit permission.
+Copyright (c) 2026 Raphael Barbosa. All rights reserved.
