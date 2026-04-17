@@ -351,6 +351,26 @@ Building Naitei let me apply what I learned (and go significantly deeper) while 
 
 ---
 
+## Demo Data
+
+Assets for portfolio recordings are in `demo/`.
+
+**CVs:** `demo/cvs/` - upload PDFs manually from your PC during recording.
+
+**Job descriptions (5):** hosted via GitHub Pages for the URL fetch demo.
+
+| # | Company | Role | Expected Score | URL |
+|---|---------|------|----------------|-----|
+| 1 | Paidy Inc. | Senior Backend Engineer | High | `https://sp1aca9fa.github.io/naitei/demo/jobs/1.html` |
+| 2 | Sansan, Inc. | Full Stack Engineer | Medium-High | `https://sp1aca9fa.github.io/naitei/demo/jobs/2.html` |
+| 3 | Helpfeel | DevOps / Platform Engineer | Medium | `https://sp1aca9fa.github.io/naitei/demo/jobs/3.html` |
+| 4 | Recruit Co., Ltd. | Junior Frontend Developer | Low | `https://sp1aca9fa.github.io/naitei/demo/jobs/4.html` |
+| 5 | Preferred Networks | AI/ML Engineer (NLP) | High | `https://sp1aca9fa.github.io/naitei/demo/jobs/5.html` |
+
+GitHub Pages deploys automatically on push to `master` via `.github/workflows/deploy-demo.yml`. One-time setup: repo Settings > Pages > Source: `gh-pages` branch.
+
+---
+
 ## License
 
 Copyright (c) 2026 Raphael Barbosa. All rights reserved.
