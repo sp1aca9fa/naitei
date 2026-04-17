@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getJob, getProfile, saveApplication, rescoreJob, updateJob, deleteJob } from '../lib/api'
 import { CompanyResearchCard } from '../components/CompanyResearchCard'
 
@@ -40,14 +41,12 @@ interface Job {
   created_at: string
 }
 
-const RECOMMENDATION_LABELS: Record<string, { label: string; color: string }> = {
-  apply_now: { label: 'Apply Now', color: 'text-green-700 bg-green-50 border-green-200' },
-  apply_with_tailoring: { label: 'Apply — Tailor Resume', color: 'text-blue-700 bg-blue-50 border-blue-200' },
-  save_for_later: { label: 'Save for Later', color: 'text-yellow-700 bg-yellow-50 border-yellow-200' },
-  skip: { label: 'Skip', color: 'text-red-700 bg-red-50 border-red-200' },
+const RECOMMENDATION_COLORS: Record<string, string> = {
+  apply_now: 'text-green-700 bg-green-50 border-green-200',
+  apply_with_tailoring: 'text-blue-700 bg-blue-50 border-blue-200',
+  save_for_later: 'text-yellow-700 bg-yellow-50 border-yellow-200',
+  skip: 'text-red-700 bg-red-50 border-red-200',
 }
-
-const EFFORT_LABELS: Record<string, string> = { low: 'Low effort', medium: 'Medium effort', high: 'High effort' }
 
 const RESCORE_DELAY_MS = parseFloat(import.meta.env.VITE_AI_REQUEST_DELAY_HOURS ?? import.meta.env.VITE_RESCORE_DELAY_HOURS ?? '24') * 3600 * 1000
 
@@ -57,9 +56,23 @@ function rescoreAvailableAt(scoredAt: string | null): Date | null {
   return available > new Date() ? available : null
 }
 
+function ScoreTooltip({ children, tooltip }: { children: React.ReactNode; tooltip: React.ReactNode }) {
+  return (
+    <div className="relative group cursor-default text-center">
+      {children}
+      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 z-10 shadow-lg hidden group-hover:block text-left">
+        {tooltip}
+      </div>
+    </div>
+  )
+}
+
 export function JobDetailPage() {
+  const { t, i18n } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const dateLocale = i18n.language.startsWith('ja') ? 'ja-JP' : undefined
+
   const [job, setJob] = useState<Job | null>(null)
   const [recentThresholdHours, setRecentThresholdHours] = useState(48)
   const [companyCredits, setCompanyCredits] = useState(0)
@@ -171,25 +184,51 @@ export function JobDetailPage() {
     }
   }
 
-  if (loading) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-gray-400">Loading...</p></main>
-  if (!job) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-red-500">{error ?? 'Job not found'}</p></main>
+  if (loading) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-gray-400">{t('common.loading')}</p></main>
+  if (!job) return <main className="max-w-3xl mx-auto px-6 py-12"><p className="text-sm text-red-500">{error ?? t('jobs.jobDetail.notFound')}</p></main>
 
-  const rec = job.ai_recommendation ? RECOMMENDATION_LABELS[job.ai_recommendation] : null
   const breakdown = job.ai_score_breakdown ?? {}
+
+  const fitTooltip = (
+    <>
+      <p className="font-semibold mb-2">{t('jobs.scores.fit.tooltipTitle')}</p>
+      <div className="space-y-1 mb-2">
+        <p><span className="text-green-400 font-medium">80–100</span> — {t('jobs.scores.fit.tooltip80')}</p>
+        <p><span className="text-blue-400 font-medium">65–79</span> — {t('jobs.scores.fit.tooltip65')}</p>
+        <p><span className="text-yellow-400 font-medium">45–64</span> — {t('jobs.scores.fit.tooltip45')}</p>
+        <p><span className="text-red-400 font-medium">0–44</span> — {t('jobs.scores.fit.tooltip0')}</p>
+      </div>
+      <p className="text-gray-400 border-t border-gray-700 pt-2">{t('jobs.scores.fit.tooltipFooter')}</p>
+    </>
+  )
+
+  const atsTooltip = (
+    <>
+      <p className="text-gray-300 mb-2">{t('jobs.scores.ats.tooltipIntro')}</p>
+      <p className="font-semibold mb-2">{t('jobs.scores.ats.tooltipTitle')}</p>
+      <div className="space-y-1 mb-2">
+        <p><span className="text-green-400 font-medium">80–100</span> — {t('jobs.scores.ats.tooltip80')}</p>
+        <p><span className="text-blue-400 font-medium">60–79</span> — {t('jobs.scores.ats.tooltip60')}</p>
+        <p><span className="text-yellow-400 font-medium">40–59</span> — {t('jobs.scores.ats.tooltip40')}</p>
+        <p><span className="text-red-400 font-medium">0–39</span> — {t('jobs.scores.ats.tooltip0')}</p>
+      </div>
+      <p className="text-gray-400 border-t border-gray-700 pt-2">{t('jobs.scores.ats.tooltipFooter')}</p>
+    </>
+  )
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-12 space-y-5">
       {error && <p className="text-sm text-red-500">{error}</p>}
-      {/* Header */}
+
       <div>
         <Link to="/jobs" className="text-xs text-gray-400 hover:text-gray-600 mb-2 inline-block">
-          &larr; My Jobs
+          {t('jobs.jobDetail.backLink')}
         </Link>
         <h2 className="text-xl font-bold text-gray-900">{job.title}</h2>
         {job.company && <p className="text-sm text-gray-500 mt-0.5">{job.company}</p>}
         <div className="flex items-center gap-2 mt-1">
           {job.posted_at && (Date.now() - new Date(job.posted_at).getTime()) < recentThresholdHours * 60 * 60 * 1000 && (
-            <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">Recent</span>
+            <span className="text-xs px-1.5 py-0.5 rounded bg-green-50 text-green-700 border border-green-200 font-medium">{t('jobs.jobDetail.badgeRecent')}</span>
           )}
           {editingDate ? (
             <>
@@ -200,46 +239,35 @@ export function JobDetailPage() {
                 className="text-xs border border-gray-300 rounded px-2 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
                 autoFocus
               />
-              <button
-                onClick={handleSaveDate}
-                disabled={savingDate}
-                className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-              >
-                {savingDate ? '...' : 'Save'}
+              <button onClick={handleSaveDate} disabled={savingDate} className="text-xs px-2 py-0.5 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                {savingDate ? '...' : t('common.save')}
               </button>
-              <button onClick={() => setEditingDate(false)} className="text-xs text-gray-400 hover:text-gray-600">
-                Cancel
-              </button>
+              <button onClick={() => setEditingDate(false)} className="text-xs text-gray-400 hover:text-gray-600">{t('common.cancel')}</button>
             </>
           ) : job.posted_at ? (
             <>
               <span className="text-xs text-gray-400">
-                Posted {new Date(job.posted_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                {t('jobs.jobDetail.postedDate', { date: new Date(job.posted_at).toLocaleDateString(dateLocale, { year: 'numeric', month: 'short', day: 'numeric' }) })}
               </span>
-              <button
-                onClick={() => { setDateInput(job.posted_at!.slice(0, 10)); setEditingDate(true) }}
-                className="text-xs text-gray-400 hover:text-gray-600"
-              >
-                Edit
+              <button onClick={() => { setDateInput(job.posted_at!.slice(0, 10)); setEditingDate(true) }} className="text-xs text-gray-400 hover:text-gray-600">
+                {t('jobs.jobDetail.editDate')}
               </button>
             </>
           ) : (
-            <button
-              onClick={() => { setDateInput(''); setEditingDate(true) }}
-              className="text-xs text-gray-400 hover:text-gray-600"
-            >
-              + Add posting date
+            <button onClick={() => { setDateInput(''); setEditingDate(true) }} className="text-xs text-gray-400 hover:text-gray-600">
+              {t('jobs.jobDetail.addPostingDate')}
             </button>
           )}
         </div>
+
         {job.url ? (
           <div className="flex items-center gap-3 mt-1">
             <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline">
-              View original posting &rarr;
+              {t('jobs.jobDetail.viewOriginal')}
             </a>
             {job.description_raw && (
               <a href="#job-description" className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
-                View saved description
+                {t('jobs.jobDetail.viewSavedDescription')}
               </a>
             )}
           </div>
@@ -253,87 +281,67 @@ export function JobDetailPage() {
               className="text-xs border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-500 w-64"
               autoFocus
             />
-            <button
-              onClick={handleSaveUrl}
-              disabled={savingUrl || !urlInput.trim()}
-              className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-            >
-              {savingUrl ? '...' : 'Save'}
+            <button onClick={handleSaveUrl} disabled={savingUrl || !urlInput.trim()} className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+              {savingUrl ? '...' : t('common.save')}
             </button>
-            <button onClick={() => setAddingUrl(false)} className="text-xs text-gray-400 hover:text-gray-600">
-              Cancel
-            </button>
+            <button onClick={() => setAddingUrl(false)} className="text-xs text-gray-400 hover:text-gray-600">{t('common.cancel')}</button>
           </div>
         ) : (
           <div className="flex items-center gap-3 mt-1">
             {job.description_raw && (
               <a href="#job-description" className="text-xs text-blue-600 hover:underline">
-                View job description &rarr;
+                {t('jobs.jobDetail.viewJobDescription')}
               </a>
             )}
             <button onClick={() => setAddingUrl(true)} className="text-xs text-gray-400 hover:text-gray-600 hover:underline">
-              + Add URL
+              {t('jobs.jobDetail.addUrl')}
             </button>
           </div>
         )}
 
-        {/* Action buttons row */}
         <div className="flex items-center justify-end gap-2 mt-3">
           {job.scored_at && (
             <span className="text-xs text-gray-400 mr-auto">
-              Scored {new Date(job.scored_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+              {t('jobs.jobDetail.scored', { date: new Date(job.scored_at).toLocaleDateString(dateLocale, { month: 'short', day: 'numeric', year: 'numeric' }) })}
             </span>
           )}
           {(() => {
             const delayedUntil = rescoreAvailableAt(job.scored_at ?? null)
             const blocked = rescoring || rescoreCooldown || !!delayedUntil || job.scoring_status === 'pending'
             const title = job.scoring_status === 'pending'
-              ? 'Scoring in progress'
+              ? t('jobs.jobDetail.scoringInProgress')
               : rescoreCooldown && !rescoring
-              ? 'Re-score recently triggered — wait a moment'
+              ? t('jobs.jobDetail.rescoreCooldown')
               : delayedUntil
-              ? `Re-score available at ${delayedUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+              ? t('jobs.jobDetail.rescoreAvailableAt', { time: delayedUntil.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' }) })
               : undefined
             return (
-              <button
-                onClick={handleRescore}
-                disabled={blocked}
-                title={title}
-                className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {rescoring ? 'Rescoring — up to 30s...' : delayedUntil ? `Re-score (${delayedUntil.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : 'Re-score'}
+              <button onClick={handleRescore} disabled={blocked} title={title}
+                className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed">
+                {rescoring
+                  ? t('jobs.jobDetail.rescoringButton')
+                  : delayedUntil
+                  ? t('jobs.jobDetail.rescoreAtButton', { time: delayedUntil.toLocaleTimeString(dateLocale, { hour: '2-digit', minute: '2-digit' }) })
+                  : t('jobs.jobDetail.rescoreButton')}
               </button>
             )
           })()}
-          <button
-            onClick={handleSave}
-            disabled={saving || saved}
-            className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {saved ? 'Saved to Applications' : saving ? 'Saving...' : 'Save to Applications'}
+          <button onClick={handleSave} disabled={saving || saved}
+            className="px-4 py-2 text-sm rounded border border-gray-300 hover:border-gray-400 disabled:opacity-50 disabled:cursor-not-allowed">
+            {saved ? t('jobs.jobDetail.savedToApplications') : saving ? t('jobs.jobDetail.saving') : t('jobs.jobDetail.saveToApplications')}
           </button>
           {confirmDelete ? (
             <span className="flex items-center gap-1">
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className="px-3 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-              >
-                {deleting ? '...' : 'Confirm'}
+              <button onClick={handleDelete} disabled={deleting} className="px-3 py-2 text-sm rounded bg-red-600 text-white hover:bg-red-700 disabled:opacity-50">
+                {deleting ? '...' : t('common.confirm')}
               </button>
-              <button
-                onClick={() => setConfirmDelete(false)}
-                className="px-3 py-2 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50"
-              >
-                Cancel
+              <button onClick={() => setConfirmDelete(false)} className="px-3 py-2 text-sm rounded border border-gray-300 text-gray-600 hover:bg-gray-50">
+                {t('common.cancel')}
               </button>
             </span>
           ) : (
-            <button
-              onClick={() => setConfirmDelete(true)}
-              className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-400 hover:text-red-500 hover:border-red-300"
-            >
-              Delete
+            <button onClick={() => setConfirmDelete(true)} className="px-4 py-2 text-sm rounded border border-gray-300 text-gray-400 hover:text-red-500 hover:border-red-300">
+              {t('common.delete')}
             </button>
           )}
         </div>
@@ -341,66 +349,49 @@ export function JobDetailPage() {
 
       {job.scoring_status === 'skipped' && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-          This job was skipped due to a blocklist match.
+          {t('jobs.jobDetail.skippedAlert')}
         </div>
       )}
 
       {job.scoring_status === 'failed' && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-sm text-red-800">
-          Scoring failed. This can happen during high AI demand — try rescoring in a few minutes.
+          {t('jobs.jobDetail.failedAlert')}
         </div>
       )}
 
       {job.ai_score !== null && (
         <>
-          {/* Scores + recommendation */}
           <div className="bg-white border border-gray-200 rounded-lg p-6">
             <div className="flex justify-center gap-10 mb-6">
-              {/* Fit score */}
-              <div className="relative group cursor-default text-center">
+              <ScoreTooltip tooltip={fitTooltip}>
                 <p className="text-4xl font-bold text-gray-900">{job.ai_score}<span className="text-lg text-gray-400">/100</span></p>
-                <p className="text-xs text-gray-500 mt-1">Fit score</p>
-                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 z-10 shadow-lg hidden group-hover:block text-left">
-                  <p className="font-semibold mb-2">Technical fit — "Am I qualified?"</p>
-                  <div className="space-y-1 mb-2">
-                    <p><span className="text-green-400 font-medium">80–100</span> — Strong qualification. Skills and seniority closely align with the role.</p>
-                    <p><span className="text-blue-400 font-medium">65–79</span> — Good fit. Minor skill or seniority gaps — tailoring helps.</p>
-                    <p><span className="text-yellow-400 font-medium">45–64</span> — Partial fit. Notable gaps. Apply if you're comfortable stretching.</p>
-                    <p><span className="text-red-400 font-medium">0–44</span> — Poor fit. Significant skill or seniority mismatch. Best to skip.</p>
-                  </div>
-                  <p className="text-gray-400 border-t border-gray-700 pt-2">Based on: your skills, proficiency levels, seniority match, and experience relevance.</p>
-                </div>
-              </div>
+                <p className="text-xs text-gray-500 mt-1">{t('jobs.scores.fit.label')}</p>
+              </ScoreTooltip>
 
-              {/* ATS score */}
               {job.ats_details?.skipped ? (
                 <div className="text-center">
                   <p className="text-4xl font-bold text-gray-300">—</p>
                   <p className="text-xs text-gray-400 mt-1">ATS</p>
-                  <p className="text-xs text-yellow-600 mt-1">Re-upload CV to enable</p>
+                  <p className="text-xs text-yellow-600 mt-1">{t('jobs.scores.ats.reupload')}</p>
                 </div>
               ) : job.ats_score !== null ? (
-                <div className="relative group cursor-default text-center">
+                <ScoreTooltip tooltip={atsTooltip}>
                   <p className="text-4xl font-bold text-gray-900">{job.ats_score}<span className="text-lg text-gray-400">/100</span></p>
-                  <p className="text-xs text-gray-500 mt-1">ATS score</p>
-                  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-72 bg-gray-900 text-white text-xs rounded-lg p-3 z-10 shadow-lg hidden group-hover:block text-left">
-                    <p className="font-semibold mb-2">Keyword screening — "Will my CV get through?"</p>
-                    <div className="space-y-1 mb-2">
-                      <p><span className="text-green-400 font-medium">80–100</span> — Strong keyword coverage. CV language closely matches what the job expects.</p>
-                      <p><span className="text-blue-400 font-medium">60–79</span> — Decent coverage. Some keywords missing — minor tailoring helps.</p>
-                      <p><span className="text-yellow-400 font-medium">40–59</span> — Notable keyword gaps. Tailoring CV language to the job description recommended.</p>
-                      <p><span className="text-red-400 font-medium">0–39</span> — Low keyword overlap. CV language may not resonate with automated screening.</p>
-                    </div>
-                    <p className="text-gray-400 border-t border-gray-700 pt-2">Evaluated from your raw CV text only — not the interpreted summary.</p>
-                  </div>
-                </div>
+                  <p className="text-xs text-gray-500 mt-1">{t('jobs.scores.ats.label')}</p>
+                </ScoreTooltip>
               ) : null}
             </div>
-            {job.ai_summary && <p className="text-sm text-gray-600 mb-4">{job.ai_summary}</p>}
-            {rec && (
+
+            {job.ai_summary && (
               <>
-                <div className={`inline-flex items-center px-3 py-1.5 rounded border text-sm font-medium ${rec.color}`}>
-                  {rec.label}
+                <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">{t('jobs.jobDetail.aiAnalysisSummary')}</h3>
+                <p className="text-sm text-gray-600 mb-4">{job.ai_summary}</p>
+              </>
+            )}
+            {job.ai_recommendation && (
+              <>
+                <div className={`inline-flex items-center px-3 py-1.5 rounded border text-sm font-medium ${RECOMMENDATION_COLORS[job.ai_recommendation] ?? ''}`}>
+                  {t(`jobs.recommendations.${job.ai_recommendation}`, { defaultValue: job.ai_recommendation })}
                 </div>
                 {job.ai_recommendation_reason && (
                   <p className="text-xs text-gray-500 mt-2">{job.ai_recommendation_reason}</p>
@@ -409,14 +400,15 @@ export function JobDetailPage() {
             )}
           </div>
 
-          {/* Score breakdowns */}
           {Object.keys(breakdown).length > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Fit Breakdown</h4>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('jobs.jobDetail.fitBreakdown')}</h4>
               <div className="space-y-2">
                 {Object.entries(breakdown).map(([key, val]) => (
                   <div key={key} className="flex items-center gap-3">
-                    <span className="text-xs text-gray-500 w-40 shrink-0 capitalize">{key.replace(/_/g, ' ')}</span>
+                    <span className="text-xs text-gray-500 w-40 shrink-0">
+                      {t(`jobs.scores.breakdownKeys.${key}`, { defaultValue: key.replace(/_/g, ' ') })}
+                    </span>
                     <div className="flex-1 bg-gray-100 rounded-full h-2">
                       <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${val}%` }} />
                     </div>
@@ -427,11 +419,10 @@ export function JobDetailPage() {
             </div>
           )}
 
-          {/* Skills */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {(job.matched_skills?.length ?? 0) > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Matched Skills</h4>
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('jobs.jobDetail.matchedSkills')}</h4>
                 <div className="flex flex-wrap gap-1.5">
                   {job.matched_skills!.map(s => (
                     <span key={s} className="text-xs px-2 py-0.5 rounded bg-green-50 text-green-700">{s}</span>
@@ -441,7 +432,7 @@ export function JobDetailPage() {
             )}
             {(job.missing_skills?.length ?? 0) > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Missing Skills</h4>
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('jobs.jobDetail.missingSkills')}</h4>
                 <div className="flex flex-wrap gap-1.5">
                   {job.missing_skills!.map(s => (
                     <span key={s} className="text-xs px-2 py-0.5 rounded bg-red-50 text-red-600">{s}</span>
@@ -451,11 +442,10 @@ export function JobDetailPage() {
             )}
           </div>
 
-          {/* Flags */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {(job.ai_green_flags?.length ?? 0) > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Green Flags</h4>
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('jobs.jobDetail.greenFlags')}</h4>
                 <ul className="space-y-1">
                   {job.ai_green_flags!.map(f => (
                     <li key={f} className="text-sm text-green-700 flex gap-2"><span className="shrink-0">+</span><span>{f}</span></li>
@@ -465,7 +455,7 @@ export function JobDetailPage() {
             )}
             {(job.ai_red_flags?.length ?? 0) > 0 && (
               <div className="bg-white border border-gray-200 rounded-lg p-4">
-                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Red Flags</h4>
+                <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('jobs.jobDetail.redFlags')}</h4>
                 <ul className="space-y-1">
                   {job.ai_red_flags!.map(f => (
                     <li key={f} className="text-sm text-red-600 flex gap-2"><span className="shrink-0">-</span><span>{f}</span></li>
@@ -475,10 +465,9 @@ export function JobDetailPage() {
             )}
           </div>
 
-          {/* ATS improvements */}
           {(job.ats_details?.improvements?.length ?? 0) > 0 && (
             <div className="bg-white border border-gray-200 rounded-lg p-4">
-              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">ATS Improvements</h4>
+              <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">{t('jobs.jobDetail.atsImprovements')}</h4>
               <ul className="space-y-1">
                 {job.ats_details!.improvements.map(i => (
                   <li key={i} className="text-sm text-gray-600 flex gap-2">
@@ -489,11 +478,12 @@ export function JobDetailPage() {
             </div>
           )}
 
-          {/* Meta */}
           {(job.salary_assessment || job.application_effort) && (
             <div className="flex gap-4 text-xs text-gray-500">
               {job.salary_assessment && <span>{job.salary_assessment}</span>}
-              {job.application_effort && <span>{EFFORT_LABELS[job.application_effort] ?? job.application_effort}</span>}
+              {job.application_effort && (
+                <span>{t(`jobs.jobDetail.effort.${job.application_effort}`, { defaultValue: job.application_effort })}</span>
+              )}
             </div>
           )}
         </>
@@ -502,30 +492,27 @@ export function JobDetailPage() {
       {job.description_raw && (
         <div id="job-description" className="bg-white border border-gray-200 rounded-lg p-6">
           <div className="flex items-center justify-between mb-3">
-            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Job Description</h4>
-            <button
-              onClick={() => setDescriptionExpanded(v => !v)}
-              className="text-xs text-gray-400 hover:text-gray-600"
-            >
-              {descriptionExpanded ? 'Collapse' : 'Expand'}
+            <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{t('jobs.jobDetail.jobDescription')}</h4>
+            <button onClick={() => setDescriptionExpanded(v => !v)} className="text-xs text-gray-400 hover:text-gray-600">
+              {descriptionExpanded ? t('jobs.jobDetail.collapse') : t('jobs.jobDetail.expand')}
             </button>
           </div>
           {descriptionExpanded ? (
             <>
               <pre className="text-sm text-gray-700 whitespace-pre-wrap font-sans leading-relaxed">{job.description_raw}</pre>
               <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100">
-                <span className="text-xs text-gray-400">{job.description_raw.length.toLocaleString()} chars</span>
+                <span className="text-xs text-gray-400">{t('jobs.jobDetail.chars', { count: job.description_raw.length.toLocaleString(dateLocale) })}</span>
                 {(() => {
                   const maxChars = import.meta.env.VITE_JOB_DESCRIPTION_MAX_CHARS ? parseInt(import.meta.env.VITE_JOB_DESCRIPTION_MAX_CHARS) : undefined
                   return maxChars && job.description_raw.length > maxChars ? (
-                    <span className="text-xs text-yellow-600">Only the first {maxChars.toLocaleString()} chars are sent to AI for scoring</span>
+                    <span className="text-xs text-yellow-600">{t('jobs.jobDetail.charsTruncated', { count: maxChars.toLocaleString(dateLocale) })}</span>
                   ) : null
                 })()}
               </div>
             </>
           ) : (
             <p className="text-xs text-gray-400 italic">
-              {job.description_raw.length.toLocaleString()} chars — click Expand to read
+              {t('jobs.jobDetail.charsCollapsed', { count: job.description_raw.length.toLocaleString(dateLocale) })}
             </p>
           )}
         </div>

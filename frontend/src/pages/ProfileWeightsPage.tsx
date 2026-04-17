@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getProfile, updateProfile } from '@/lib/api'
 
 interface ScoreWeights {
@@ -12,6 +13,7 @@ interface ScoreWeights {
 const DEFAULT_WEIGHTS: ScoreWeights = { skills: 30, language: 25, company: 20, location: 15, growth: 10 }
 
 export function ProfileWeightsPage() {
+  const { t } = useTranslation()
   const [weights, setWeights] = useState<ScoreWeights>(DEFAULT_WEIGHTS)
   const [saveStatus, setSaveStatus] = useState<'saving' | 'saved' | 'error' | null>(null)
   const lastSaved = useRef<ScoreWeights | null>(null)
@@ -51,28 +53,28 @@ export function ProfileWeightsPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-4">Score Weights</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-4">{t('profile.weights.title')}</h1>
       <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 mb-6 text-sm text-red-700">
-        These weights are currently not in use. This feature is planned for a future update (language/location preference warnings and recommendation adjustments).
+        {t('profile.weights.notInUse')}
       </div>
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-xs text-gray-500">Adjust how each category affects your job-fit score.</p>
+            <p className="text-xs text-gray-500">{t('profile.weights.adjust')}</p>
           </div>
           <div className="flex items-center gap-3">
-            {saveStatus === 'saving' && <span className="text-xs text-gray-400">Saving...</span>}
-            {saveStatus === 'saved' && <span className="text-xs text-green-600">Saved</span>}
-            {saveStatus === 'error' && <span className="text-xs text-red-500">Save failed</span>}
+            {saveStatus === 'saving' && <span className="text-xs text-gray-400">{t('common.saving')}</span>}
+            {saveStatus === 'saved' && <span className="text-xs text-green-600">{t('common.saved')}</span>}
+            {saveStatus === 'error' && <span className="text-xs text-red-500">{t('common.saveFailed')}</span>}
             <span className={`text-sm font-medium ${total === 100 ? 'text-green-600' : 'text-amber-600'}`}>
-              Total: {total}/100
+              {t('profile.weights.total', { count: total })}
             </span>
           </div>
         </div>
         {(Object.entries(weights) as [keyof ScoreWeights, number][]).map(([key, val]) => (
           <div key={key} className="space-y-1">
             <div className="flex justify-between text-sm">
-              <span className="capitalize text-gray-700">{key === 'language' ? 'Language / Env' : key}</span>
+              <span className="text-gray-700">{key === 'language' ? t('profile.weights.languageEnv') : t(`profile.weights.keys.${key}`, { defaultValue: key })}</span>
               <span className="font-mono text-gray-600">{val}</span>
             </div>
             <input

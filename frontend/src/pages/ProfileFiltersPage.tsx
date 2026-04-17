@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getProfile, updateProfile } from '@/lib/api'
 
 export function ProfileFiltersPage() {
+  const { t } = useTranslation()
   const [blocklist, setBlocklist] = useState<string[]>([])
   const [newBlockword, setNewBlockword] = useState('')
   const [displayMinScore, setDisplayMinScore] = useState(50)
@@ -68,22 +70,21 @@ export function ProfileFiltersPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6 space-y-8">
-      <h1 className="text-2xl font-bold text-gray-900">Filters</h1>
+      <h1 className="text-2xl font-bold text-gray-900">{t('profile.filters.title')}</h1>
 
-      {/* Blocklist */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-gray-800">Blocklist Words</h2>
-        <p className="text-xs text-gray-500">Jobs containing these phrases will be skipped before scoring (saves AI tokens).</p>
+        <h2 className="text-lg font-semibold text-gray-800">{t('profile.filters.blocklistTitle')}</h2>
+        <p className="text-xs text-gray-500">{t('profile.filters.blocklistDesc')}</p>
         <div className="flex gap-2">
           <input
             type="text"
             value={newBlockword}
             onChange={e => setNewBlockword(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && addBlockword()}
-            placeholder="e.g. 10 years experience"
+            placeholder={t('profile.filters.blocklistPlaceholder')}
             className="flex-1 text-sm border border-gray-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button onClick={addBlockword} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium">Add</button>
+          <button onClick={addBlockword} className="text-sm px-3 py-1.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-gray-700 font-medium">{t('profile.filters.add')}</button>
         </div>
         {blocklist.length > 0 && (
           <div className="flex flex-wrap gap-2">
@@ -97,14 +98,13 @@ export function ProfileFiltersPage() {
         )}
       </section>
 
-      {/* Display filters */}
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-        <h2 className="text-lg font-semibold text-gray-800">Job List Filters</h2>
-        <p className="text-xs text-gray-500">Control which jobs appear in your list by default.</p>
+        <h2 className="text-lg font-semibold text-gray-800">{t('profile.filters.jobListTitle')}</h2>
+        <p className="text-xs text-gray-500">{t('profile.filters.jobListDesc')}</p>
 
         <div className="space-y-1">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-700">Minimum match score</span>
+            <span className="text-gray-700">{t('profile.filters.minScore')}</span>
             <span className="font-mono text-gray-600">{displayMinScore}</span>
           </div>
           <input
@@ -112,7 +112,7 @@ export function ProfileFiltersPage() {
             onChange={e => setDisplayMinScore(Number(e.target.value))}
             className="w-full accent-blue-600"
           />
-          <p className="text-xs text-gray-400">Jobs scored below this will be hidden. Set to 0 to show all.</p>
+          <p className="text-xs text-gray-400">{t('profile.filters.minScoreHint')}</p>
         </div>
 
         <label className="flex items-center gap-3 cursor-pointer">
@@ -122,14 +122,14 @@ export function ProfileFiltersPage() {
             className="w-4 h-4 accent-blue-600"
           />
           <div>
-            <span className="text-sm text-gray-700">Show jobs recommended to skip</span>
-            <p className="text-xs text-gray-400">Hidden by default. Enable to see jobs the AI flagged as not a good fit.</p>
+            <span className="text-sm text-gray-700">{t('profile.filters.showSkipped')}</span>
+            <p className="text-xs text-gray-400">{t('profile.filters.showSkippedHint')}</p>
           </div>
         </label>
 
         <div className="space-y-1">
           <div className="flex justify-between text-sm">
-            <span className="text-gray-700">Recent badge threshold</span>
+            <span className="text-gray-700">{t('profile.filters.recentThreshold')}</span>
             <span className="font-mono text-gray-600">{recentThresholdHours}h</span>
           </div>
           <select
@@ -137,12 +137,12 @@ export function ProfileFiltersPage() {
             onChange={e => setRecentThresholdHours(Number(e.target.value))}
             className="border border-gray-300 rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
-            <option value={24}>24h — within the last day</option>
-            <option value={48}>48h — within the last 2 days (recommended)</option>
-            <option value={72}>72h — within the last 3 days</option>
-            <option value={168}>7 days — within the last week</option>
+            <option value={24}>{t('profile.filters.threshold24')}</option>
+            <option value={48}>{t('profile.filters.threshold48')}</option>
+            <option value={72}>{t('profile.filters.threshold72')}</option>
+            <option value={168}>{t('profile.filters.threshold168')}</option>
           </select>
-          <p className="text-xs text-gray-400">Jobs posted within this window show a "Recent" badge.</p>
+          <p className="text-xs text-gray-400">{t('profile.filters.recentThresholdHint')}</p>
         </div>
       </section>
     </div>

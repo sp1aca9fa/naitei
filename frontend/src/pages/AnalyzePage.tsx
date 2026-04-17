@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { importPasteJob, importUrlJob, getProfile } from '../lib/api'
 
 export function AnalyzePage() {
+  const { t } = useTranslation()
   const navigate = useNavigate()
   const [hasSkills, setHasSkills] = useState<boolean | null>(null)
   const [url, setUrl] = useState('')
@@ -36,18 +38,18 @@ export function AnalyzePage() {
       if (data.fallback) {
         setFetchError(
           data.reason === 'login_wall'
-            ? "This page requires login — paste the description below."
-            : "Couldn't fetch that URL — paste the description below."
+            ? t('analyze.loginWall')
+            : t('analyze.fetchFailed')
         )
       } else {
         if (data.description) setDescription(data.description)
         if (data.title) setTitle(data.title)
         if (data.company) setCompany(data.company)
         if (data.postedAt) setPostedDate(data.postedAt.slice(0, 10))
-        setFetchWarning("Auto-filled from URL — review and correct the fields below before analyzing.")
+        setFetchWarning(t('analyze.autoFilled'))
       }
     } catch (err) {
-      setFetchError(err instanceof Error ? err.message : 'Fetch failed')
+      setFetchError(err instanceof Error ? err.message : t('common.error'))
     } finally {
       setFetching(false)
     }
@@ -68,12 +70,12 @@ export function AnalyzePage() {
         posted_at: postedDate.trim() || undefined,
       })
       if (data.skipped) {
-        setSkipped(data.error ?? 'Job matched a blocklist word and was skipped.')
+        setSkipped(data.error ?? t('analyze.skippedFallback'))
         return
       }
       navigate(`/jobs/${data.job.id}`)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to import job')
+      setError(err instanceof Error ? err.message : t('common.error'))
     } finally {
       setLoading(false)
     }
@@ -82,13 +84,15 @@ export function AnalyzePage() {
   return (
     <main className="max-w-3xl mx-auto px-6 py-8 flex flex-col min-h-[calc(100vh-3.5rem)]">
       <div className="mb-5">
-        <h2 className="text-2xl font-bold text-gray-900 mb-1">Analyze a Job</h2>
-        <p className="text-sm text-gray-400">Paste a job description to score it against your profile.</p>
+        <h2 className="text-2xl font-bold text-gray-900 mb-1">{t('analyze.title')}</h2>
+        <p className="text-sm text-gray-400">{t('analyze.subtitle')}</p>
       </div>
 
       {hasSkills === false && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 text-sm text-yellow-800 mb-4">
-          Upload your resume on the <Link to="/profile" className="underline font-medium">Profile page</Link> before analyzing jobs.
+          {t('analyze.noSkillsWarningPre')}{' '}
+          <Link to="/profile" className="underline font-medium">{t('analyze.noSkillsLink')}</Link>
+          {' '}{t('analyze.noSkillsWarningPost')}
         </div>
       )}
 
@@ -96,12 +100,12 @@ export function AnalyzePage() {
         <div className="mb-4">
           <input
             type="url"
-            placeholder="Job URL (paste to auto-fill)"
+            placeholder={t('analyze.urlPlaceholder')}
             value={url}
             onChange={e => handleUrlChange(e.target.value)}
             className="w-full border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          {fetching && <p className="text-xs text-gray-400 mt-1">Fetching...</p>}
+          {fetching && <p className="text-xs text-gray-400 mt-1">{t('analyze.fetching')}</p>}
         </div>
 
         {fetchError && (
@@ -115,21 +119,21 @@ export function AnalyzePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <input
               type="text"
-              placeholder="Job title (optional — extracted from text if blank)"
+              placeholder={t('analyze.titlePlaceholder')}
               value={title}
               onChange={e => setTitle(e.target.value)}
               className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
             <input
               type="text"
-              placeholder="Company name (optional)"
+              placeholder={t('analyze.companyPlaceholder')}
               value={company}
               onChange={e => setCompany(e.target.value)}
               className="border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs text-gray-500 mb-1">Posted on (optional — helps gauge recency)</label>
+            <label className="block text-xs text-gray-500 mb-1">{t('analyze.postedOnLabel')}</label>
             <input
               type="date"
               value={postedDate}
@@ -138,7 +142,7 @@ export function AnalyzePage() {
             />
           </div>
           <textarea
-            placeholder="Paste the full job description here..."
+            placeholder={t('analyze.descriptionPlaceholder')}
             value={description}
             onChange={e => setDescription(e.target.value)}
             className="w-full flex-1 border border-gray-300 rounded px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
@@ -148,7 +152,7 @@ export function AnalyzePage() {
             disabled={loading || !hasSkills || description.trim().length < 50}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed self-start"
           >
-            {loading ? 'Analyzing — this may take up to 30s...' : 'Analyze Job'}
+            {loading ? t('analyze.analyzing') : t('analyze.analyzeButton')}
           </button>
         </form>
       </div>
@@ -157,7 +161,7 @@ export function AnalyzePage() {
 
       {skipped && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800 mt-4">
-          <p className="font-medium">Job skipped</p>
+          <p className="font-medium">{t('analyze.skippedTitle')}</p>
           <p className="text-yellow-700 mt-1">{skipped}</p>
         </div>
       )}

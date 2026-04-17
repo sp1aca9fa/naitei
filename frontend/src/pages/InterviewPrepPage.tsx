@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useParams, Link } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { getApplication, generateInterviewPrep } from '../lib/api'
 
 interface InterviewPrep {
@@ -25,6 +26,7 @@ function Section({ title, items }: { title: string; items: string[] }) {
 }
 
 export function InterviewPrepPage() {
+  const { t, i18n } = useTranslation()
   const { id } = useParams<{ id: string }>()
   const [jobTitle, setJobTitle] = useState('')
   const [company, setCompany] = useState('')
@@ -34,6 +36,8 @@ export function InterviewPrepPage() {
   const [loading, setLoading] = useState(true)
   const [generating, setGenerating] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const dateLocale = i18n.language.startsWith('ja') ? 'ja-JP' : undefined
 
   useEffect(() => {
     if (!id) return
@@ -60,7 +64,7 @@ export function InterviewPrepPage() {
       setPrep(result)
       setGeneratedAt(new Date().toISOString())
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Generation failed')
+      setError(e instanceof Error ? e.message : t('common.error'))
     } finally {
       setGenerating(false)
     }
@@ -70,14 +74,14 @@ export function InterviewPrepPage() {
     <main className="max-w-3xl mx-auto px-6 py-10">
       <div className="mb-6">
         <div className="flex items-center justify-between">
-          <Link to="/interview-prep" className="text-xs text-gray-400 hover:text-gray-600">← Interview Prep</Link>
-          <Link to={`/applications?expand=${id}`} className="text-xs px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors">Open application card →</Link>
+          <Link to="/interview-prep" className="text-xs text-gray-400 hover:text-gray-600">{t('interviewPrep.backLink')}</Link>
+          <Link to={`/applications?expand=${id}`} className="text-xs px-2.5 py-1 border border-gray-300 rounded text-gray-600 hover:bg-gray-50 transition-colors">{t('interviewPrep.openApplication')}</Link>
         </div>
-        <h2 className="text-2xl font-bold text-gray-900 mt-2">Interview Prep</h2>
+        <h2 className="text-2xl font-bold text-gray-900 mt-2">{t('interviewPrep.title')}</h2>
         {(jobTitle || company) && (
           <p className="text-sm text-gray-500 mt-0.5">
             {jobTitle}{company ? ` — ${company}` : ''}
-            {round != null && <span className="ml-2 text-xs text-blue-600">Round {round}</span>}
+            {round != null && <span className="ml-2 text-xs text-blue-600">{t('interviewPrep.round', { round })}</span>}
           </p>
         )}
       </div>
@@ -85,17 +89,19 @@ export function InterviewPrepPage() {
       {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
 
       {loading ? (
-        <p className="text-sm text-gray-400">Loading...</p>
+        <p className="text-sm text-gray-400">{t('common.loading')}</p>
       ) : prep ? (
         <div className="space-y-8">
           {generatedAt && (
-            <p className="text-xs text-gray-400">Generated {new Date(generatedAt).toLocaleDateString()}</p>
+            <p className="text-xs text-gray-400">
+              {t('interviewPrep.generatedAt', { date: new Date(generatedAt).toLocaleDateString(dateLocale) })}
+            </p>
           )}
 
-          <Section title="Topics to review" items={prep.key_topics} />
+          <Section title={t('interviewPrep.topicsToReview')} items={prep.key_topics} />
 
           <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Likely questions</h3>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('interviewPrep.likelyQuestions')}</h3>
             <div className="space-y-3">
               {prep.likely_questions.map((q, i) => (
                 <div key={i} className="bg-white border border-gray-200 rounded-xl p-4">
@@ -106,10 +112,10 @@ export function InterviewPrepPage() {
             </div>
           </div>
 
-          <Section title="Talking points" items={prep.talking_points} />
+          <Section title={t('interviewPrep.talkingPoints')} items={prep.talking_points} />
 
           <div>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Concerns to address</h3>
+            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">{t('interviewPrep.concernsToAddress')}</h3>
             <div className="space-y-3">
               {prep.concerns_to_address.map((c, i) => (
                 <div key={i} className="bg-white border border-gray-200 rounded-xl p-4">
@@ -125,20 +131,20 @@ export function InterviewPrepPage() {
             disabled={generating}
             className="text-xs text-gray-400 hover:text-blue-600 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {generating ? 'Regenerating...' : 'Regenerate'}
+            {generating ? t('common.regenerating') : t('common.regenerate')}
           </button>
         </div>
       ) : (
         <div className="bg-white border border-gray-200 rounded-xl p-8 text-center space-y-3">
-          <p className="text-sm text-gray-600">No interview prep generated yet for this application.</p>
+          <p className="text-sm text-gray-600">{t('interviewPrep.noPrep')}</p>
           <button
             onClick={() => generate(false)}
             disabled={generating}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {generating ? 'Generating...' : 'Generate Interview Prep'}
+            {generating ? t('common.generating') : t('interviewPrep.generateButton')}
           </button>
-          {generating && <p className="text-xs text-gray-400 animate-pulse">This may take a moment...</p>}
+          {generating && <p className="text-xs text-gray-400 animate-pulse">{t('common.thisMayTakeAMoment')}</p>}
         </div>
       )}
     </main>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { searchCompanies, researchCompany } from '../lib/api'
 
 interface CompanyResearch {
@@ -20,6 +21,7 @@ interface Suggestion {
 }
 
 export function CompanyResearchCard({ companyName: initialCompany, credits }: { companyName?: string; credits?: number } = {}) {
+  const { t } = useTranslation()
   const [query, setQuery] = useState(initialCompany ?? '')
   const [suggestions, setSuggestions] = useState<Suggestion[]>([])
   const [showDropdown, setShowDropdown] = useState(false)
@@ -114,19 +116,19 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
   return (
     <div className="bg-white border border-gray-200 rounded-lg p-6">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-gray-900">Company Research</h2>
-        <span className="text-xs text-gray-400">{availableCredits} credit{availableCredits !== 1 ? 's' : ''} remaining</span>
+        <h2 className="text-lg font-semibold text-gray-900">{t('company.title')}</h2>
+        <span className="text-xs text-gray-400">{t('company.credits', { count: availableCredits })}</span>
       </div>
 
       {/* Dashboard mode: search form */}
       {!initialCompany && credits !== undefined && availableCredits <= 0 && (
-        <p className="text-xs text-gray-400 mb-3">No credits remaining. Add credits from your profile settings.</p>
+        <p className="text-xs text-gray-400 mb-3">{t('company.noCredits')}</p>
       )}
       {!initialCompany && <form onSubmit={handleSubmit} className="flex flex-col sm:flex-row gap-3 mb-6">
         <div className="relative flex-1" ref={containerRef}>
           <input
             type="text"
-            placeholder="Company name"
+            placeholder={t('company.placeholder')}
             value={query}
             onChange={e => {
               setQuery(e.target.value)
@@ -158,7 +160,7 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
           disabled={generating || !query.trim() || availableCredits <= 0}
           className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
         >
-          {generating ? 'Generating...' : 'Research'}
+          {generating ? t('common.generating') : t('company.research')}
         </button>
       </form>}
 
@@ -170,17 +172,17 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
             disabled={generating || availableCredits <= 0}
             className="px-4 py-2 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Request Research
+            {t('company.requestResearch')}
           </button>
           {availableCredits <= 0 && (
-            <p className="text-xs text-gray-400 mt-2">No credits remaining. Add credits from your profile settings.</p>
+            <p className="text-xs text-gray-400 mt-2">{t('company.noCredits')}</p>
           )}
         </div>
       )}
 
       {generating && (
         <div className="mb-4 space-y-1">
-          <p className="text-sm text-gray-500">Researching company — this may take up to 30 seconds...</p>
+          <p className="text-sm text-gray-500">{t('company.researching')}</p>
           <div className="w-full h-1 bg-gray-100 rounded overflow-hidden">
             <div className="h-1 bg-blue-400 rounded animate-pulse w-2/3" />
           </div>
@@ -188,13 +190,13 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
       )}
       {error && <p className="text-sm text-red-500 mb-4">{error}</p>}
       {noCredits && (
-        <p className="text-sm text-gray-500 mb-4">No credits remaining. Add credits from your profile settings.</p>
+        <p className="text-sm text-gray-500 mb-4">{t('company.noCredits')}</p>
       )}
 
       {notFound && (
         <div className="text-sm text-gray-500 border border-gray-200 rounded p-4">
-          <p className="font-medium text-gray-700 mb-1">No data found for "{searchedName}"</p>
-          <p>This company isn't in our database yet.</p>
+          <p className="font-medium text-gray-700 mb-1">{t('company.notFoundTitle', { name: searchedName })}</p>
+          <p>{t('company.notFoundDesc')}</p>
         </div>
       )}
 
@@ -206,28 +208,28 @@ export function CompanyResearchCard({ companyName: initialCompany, credits }: { 
             <p className="text-sm text-gray-500 italic mt-1">{result.known_for}</p>
           </div>
 
-          <Section title="Tech Stack">
+          <Section title={t('company.techStack')}>
             <TagList items={result.tech_stack} color="blue" />
           </Section>
 
-          <Section title="Culture Signals">
+          <Section title={t('company.cultureSignals')}>
             <TagList items={result.culture_signals} color="purple" />
           </Section>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Section title="Green Flags">
+            <Section title={t('company.greenFlags')}>
               <BulletList items={result.green_flags} color="green" />
             </Section>
-            <Section title="Red Flags">
+            <Section title={t('company.redFlags')}>
               <BulletList items={result.red_flags} color="red" />
             </Section>
           </div>
 
-          <Section title="Interview Tips">
+          <Section title={t('company.interviewTips')}>
             <BulletList items={result.interview_tips} color="gray" />
           </Section>
 
-          <Section title="Typical Roles">
+          <Section title={t('company.typicalRoles')}>
             <TagList items={result.typical_roles} color="gray" />
           </Section>
         </div>

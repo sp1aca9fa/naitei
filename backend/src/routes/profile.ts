@@ -29,6 +29,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
 // PATCH /profile — update preferences, weights, blocklist
 const UpdateProfileSchema = z.object({
+  language: z.enum(['en', 'ja']).optional(),
   preferred_language_env: z.enum(['english', 'japanese', 'bilingual']).optional(),
   location_area: z.string().max(100).optional(),
   work_style: z.enum(['remote', 'hybrid', 'onsite', 'any']).optional(),

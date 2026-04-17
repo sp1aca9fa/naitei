@@ -1,9 +1,11 @@
 import { useState } from 'react'
 import { Navigate } from 'react-router-dom'
+import { useTranslation } from 'react-i18next'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/context/AuthContext'
 
 export function LoginPage() {
+  const { t } = useTranslation()
   const { session } = useAuth()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -26,13 +28,13 @@ export function LoginPage() {
       if (isSignUp) {
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) throw error
-        setMessage('Check your email to confirm your account.')
+        setMessage(t('login.checkEmail'))
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred')
+      setError(err instanceof Error ? err.message : t('common.error'))
     } finally {
       setLoading(false)
     }
@@ -42,15 +44,15 @@ export function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 w-full max-w-md p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Naitei</h1>
-        <p className="text-gray-500 text-sm mb-8">AI job dashboard for Tokyo dev roles</p>
+        <p className="text-gray-500 text-sm mb-8">{t('login.tagline')}</p>
 
         <h2 className="text-lg font-semibold text-gray-800 mb-6">
-          {isSignUp ? 'Create account' : 'Sign in'}
+          {isSignUp ? t('login.createAccount') : t('login.signIn')}
         </h2>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.email')}</label>
             <input
               type="email"
               value={email}
@@ -60,7 +62,7 @@ export function LoginPage() {
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.password')}</label>
             <input
               type="password"
               value={password}
@@ -79,7 +81,7 @@ export function LoginPage() {
             disabled={loading}
             className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium rounded-lg py-2 text-sm transition-colors"
           >
-            {loading ? 'Please wait...' : isSignUp ? 'Create account' : 'Sign in'}
+            {loading ? t('login.pleaseWait') : isSignUp ? t('login.createAccount') : t('login.signIn')}
           </button>
         </form>
 
@@ -87,7 +89,7 @@ export function LoginPage() {
           onClick={() => { setIsSignUp(!isSignUp); setError(null); setMessage(null) }}
           className="mt-4 w-full text-center text-sm text-gray-500 hover:text-gray-700"
         >
-          {isSignUp ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+          {isSignUp ? t('login.alreadyHaveAccount') : t('login.dontHaveAccount')}
         </button>
       </div>
     </div>

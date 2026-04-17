@@ -1,7 +1,9 @@
 import { useState, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { getProfile, updateProfile } from '@/lib/api'
 
 export function ProfileNotificationsPage() {
+  const { t } = useTranslation()
   const [notifyDigestEnabled, setNotifyDigestEnabled] = useState(false)
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(false)
   const [notifySavedEnabled, setNotifySavedEnabled] = useState(false)
@@ -71,21 +73,21 @@ export function ProfileNotificationsPage() {
 
   return (
     <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-gray-900 mb-8">Email Notifications</h1>
+      <h1 className="text-2xl font-bold text-gray-900 mb-8">{t('profile.notifications.title')}</h1>
       <section className="bg-white border border-gray-200 rounded-xl p-6 space-y-4">
-        <p className="text-xs text-gray-500">Receive reminders by email so you don't miss important updates even when you're not using the app.</p>
+        <p className="text-xs text-gray-500">{t('profile.notifications.desc')}</p>
 
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={notifyDigestEnabled} onChange={e => setNotifyDigestEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
           <div>
-            <span className="text-sm font-medium text-gray-700">Daily job digest</span>
-            <p className="text-xs text-gray-400">Receive a daily email with your job hunt status summary.</p>
+            <span className="text-sm font-medium text-gray-700">{t('profile.notifications.dailyDigest')}</span>
+            <p className="text-xs text-gray-400">{t('profile.notifications.dailyDigestDesc')}</p>
           </div>
         </label>
 
         <label className="flex items-center gap-3 cursor-pointer">
           <input type="checkbox" checked={emailNotificationsEnabled} onChange={e => setEmailNotificationsEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
-          <span className="text-sm font-medium text-gray-700">Enable follow-up reminders</span>
+          <span className="text-sm font-medium text-gray-700">{t('profile.notifications.enableFollowUp')}</span>
         </label>
 
         {emailNotificationsEnabled && (
@@ -94,15 +96,15 @@ export function ProfileNotificationsPage() {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={notifySavedEnabled} onChange={e => setNotifySavedEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
                 <div>
-                  <span className="text-sm text-gray-700">Saved jobs with no action</span>
-                  <p className="text-xs text-gray-400">Remind me when a saved job hasn't been moved forward.</p>
+                  <span className="text-sm text-gray-700">{t('profile.notifications.savedNoAction')}</span>
+                  <p className="text-xs text-gray-400">{t('profile.notifications.savedNoActionDesc')}</p>
                 </div>
               </label>
               {notifySavedEnabled && (
                 <div className="pl-7 flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Notify after</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.notifyAfter')}</span>
                   <input type="number" min={1} max={90} value={notifySavedDays} onChange={e => setNotifySavedDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
-                  <span className="text-xs text-gray-500">days with no action</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.daysNoAction')}</span>
                 </div>
               )}
             </div>
@@ -111,15 +113,15 @@ export function ProfileNotificationsPage() {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={notifyAppliedEnabled} onChange={e => setNotifyAppliedEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
                 <div>
-                  <span className="text-sm text-gray-700">Applied — no response</span>
-                  <p className="text-xs text-gray-400">Remind me to follow up when an applied job has had no update.</p>
+                  <span className="text-sm text-gray-700">{t('profile.notifications.appliedNoResponse')}</span>
+                  <p className="text-xs text-gray-400">{t('profile.notifications.appliedNoResponseDesc')}</p>
                 </div>
               </label>
               {notifyAppliedEnabled && (
                 <div className="pl-7 flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Notify after</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.notifyAfter')}</span>
                   <input type="number" min={1} max={90} value={notifyAppliedDays} onChange={e => setNotifyAppliedDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
-                  <span className="text-xs text-gray-500">days with no update</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.daysNoUpdate')}</span>
                 </div>
               )}
             </div>
@@ -128,15 +130,15 @@ export function ProfileNotificationsPage() {
               <label className="flex items-center gap-3 cursor-pointer">
                 <input type="checkbox" checked={notifyInterviewEnabled} onChange={e => setNotifyInterviewEnabled(e.target.checked)} className="w-4 h-4 accent-blue-600" />
                 <div>
-                  <span className="text-sm text-gray-700">Interview — no update</span>
-                  <p className="text-xs text-gray-400">Remind me to follow up after an interview with no update.</p>
+                  <span className="text-sm text-gray-700">{t('profile.notifications.interviewNoUpdate')}</span>
+                  <p className="text-xs text-gray-400">{t('profile.notifications.interviewNoUpdateDesc')}</p>
                 </div>
               </label>
               {notifyInterviewEnabled && (
                 <div className="pl-7 flex items-center gap-2">
-                  <span className="text-xs text-gray-500">Notify after</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.notifyAfter')}</span>
                   <input type="number" min={1} max={90} value={notifyInterviewDays} onChange={e => setNotifyInterviewDays(Math.max(1, Math.min(90, Number(e.target.value))))} className="w-14 text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center" />
-                  <span className="text-xs text-gray-500">days with no update</span>
+                  <span className="text-xs text-gray-500">{t('profile.notifications.daysNoUpdate')}</span>
                 </div>
               )}
             </div>
